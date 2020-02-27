@@ -1,0 +1,770 @@
+---
+title: "Vertical transmission of sponge microbiota is inconsistent and unfaithful"
+author: "Johannes Bjork"
+date: "5/9/2019"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Figure S9
+
+```{r fig1, warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE, fig.height=8}
+
+## This code has to be run from top-to-bottom in order to produce the focal figures
+
+## Code to compute percent shared taxa between offspring-parent and larvae-conspecific 
+## Figure S9
+
+library(phyloseq)
+library(reshape2)
+library(tidyverse)
+library(ggplot2)
+library(forcats)
+
+load("subset_data.RData")
+
+all_species_pool_track <- sample_data(ps)[sample_data(ps)$run_accession %in% setdiff(sample_data(ps)$run_accession, sample_data(ps)[grep(sample_data(ps)$host_id, pattern="Water")]$run_accession),]
+all_species_pool_track$sample_type <- factor(all_species_pool_track$sample_type)
+all_species_pool_track$sponge_species <- factor(all_species_pool_track$sponge_species, levels=c("Aplysina_aerophoba","Ircinia_oros","Ircinia_fasciculata","Crambe_crambe","Cliona_viridis","Dysidea_avara","Hemimycale_columella","Oscarella_lobularis"))
+all_species_pool_track <- all_species_pool_track[order(all_species_pool_track$sponge_species, all_species_pool_track$sample_type),]
+all_species_pool_track$sponge_species <- as.character(all_species_pool_track$sponge_species)
+
+test_larvae_adult2 <- expand.grid(unique(df_larvae$run_accession),unique(df_adults$run_accession),stringsAsFactors=F)
+test_larvae_adult2$larvaeID <- all_species_pool_track[match(test_larvae_adult2$Var1,all_species_pool_track$run_accession),]$host_id
+test_larvae_adult2$adultID <- all_species_pool_track[match(test_larvae_adult2$Var2,all_species_pool_track$run_accession),]$host_id
+test_larvae_adult2$larvaeID <- as.character(test_larvae_adult2$larvaeID)
+test_larvae_adult2$adultID <- as.character(test_larvae_adult2$adultID)
+test_larvae_adult2$larvae_species <- all_species_pool_track[match(test_larvae_adult2$Var1,all_species_pool_track$run_accession),]$sponge_species
+test_larvae_adult2$adult_species <- all_species_pool_track[match(test_larvae_adult2$Var2,all_species_pool_track$run_accession),]$sponge_species
+test_larvae_adult2 <- subset(test_larvae_adult2, as.character(test_larvae_adult2$larvae_species) == as.character(test_larvae_adult2$adult_species))
+test_larvae_adult2$n.tot <- 0
+test_larvae_adult2$n.ss <- 0
+test_larvae_adult2$n.vt_ss <- 0
+test_larvae_adult2$n.vt_tot <- 0
+
+for(j in 1:nrow(test_larvae_adult2)){
+
+  #print(j)
+
+  ## Sponge-specific definition of VT
+  # This identifies sponge-specific taxa in the focal larvae
+  
+  x <- seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,][,colSums(seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,])>0]
+  
+  # This identifies sponge-specific taxa in the focal adult
+  y <- seqtab_adults[,setdiff(colnames(seqtab_adults),colnames(seqtab_water))][df_adults[df_adults$run_accession==test_larvae_adult2$Var2[j],]$run_accession,][,colSums(seqtab_adults[,setdiff(colnames(seqtab_adults),colnames(seqtab_water))][df_adults[df_adults$run_accession==test_larvae_adult2$Var2[j],]$run_accession,])>0]
+  # Intercept between larvae-adult --> sponge-specific vertically transmitted taxa
+  z <- intersect(colnames(x),colnames(y))
+
+  ## Overall definition of VT
+  # This identifies all taxa in the focal larvae
+  xx <- seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,][,colSums(seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,])>0]
+  # This identifies all taxa in the focal adult
+  yy <- seqtab_adults[df_adults[df_adults$run_accession==test_larvae_adult2$Var2[j],]$run_accession,][,colSums(seqtab_adults[df_adults[df_adults$run_accession==test_larvae_adult2$Var2[j],]$run_accession,])>0]
+  # Intercept between larvae-adult --> overall vertically transmitted taxa
+  zz <- intersect(colnames(xx),colnames(yy))
+
+  test_larvae_adult2$n.tot[j] <- length(colnames(seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,][,colSums(seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,])>0]))
+  test_larvae_adult2$n.ss[j] <- length(colnames(seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,][,colSums(seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_adult2$Var1[j],]$run_accession,])>0]))
+
+  test_larvae_adult2$n.vt_ss[j] <- ifelse(identical(length(z),character(0)),0,length(z))
+  test_larvae_adult2$n.vt_tot[j] <- ifelse(identical(length(zz),character(0)),0,length(zz))
+}
+
+
+larvae_adult_overlap_stats2 <- function(species, within=TRUE){
+
+  ## within=TRUE --> percent shared taxa between offspring-parent 
+  ## within=FALSE --> percent shared taxa between larvae-conspecific adult
+  
+  ## numerator n.vt_tot | denominator n.tot (for overall VT)
+  df1 <- test_larvae_adult2[test_larvae_adult2$larvae_species %in% species,]
+  mat_numerator1 <- acast(df1[,c("larvaeID","adultID","n.vt_tot")], larvaeID~adultID, value.var="n.vt_tot")
+  mat_denominator1 <-  acast(df1[,c("larvaeID","adultID","n.tot")], larvaeID~adultID, value.var="n.tot")
+
+  mat_out <- vector("list",2)
+  mat_out[[1]] <- mat_numerator1/mat_denominator1
+  mat_out[[1]][is.na(mat_out[[1]])] <- 0
+
+  ## numerator n.vt_ss | denominator n.ss (for sponge-specific VT)
+  df2 <- test_larvae_adult2[test_larvae_adult2$larvae_species %in% species,]
+  mat_numerator2 <- acast(df2[,c("larvaeID","adultID","n.vt_ss")], larvaeID~adultID, value.var="n.vt_ss")
+  mat_denominator2 <-  acast(df2[,c("larvaeID","adultID","n.ss")], larvaeID~adultID, value.var="n.ss")
+
+  mat_out[[2]] <- mat_numerator2/mat_denominator2
+  mat_out[[2]][is.na(mat_out[[2]])] <- 0
+
+  within_out <- lapply(vector("list",2), function(x) vector("list",3))
+  between_out <- lapply(vector("list",2), function(x) vector("list",3))
+
+  AdultIDs <- colnames(mat_out[[1]])
+  for(i in 1:length(AdultIDs)){
+    
+    ## for n.vt_tot
+    within_out[[1]][[i]] <- mat_out[[1]][grep(x=rownames(mat_out[[1]]),pattern=AdultIDs[i],fixed=F),grep(x=colnames(mat_out[[1]]),pattern=AdultIDs[i],fixed=F)]
+    between_out[[1]][[i]] <- mat_out[[1]][grep(x=rownames(mat_out[[1]]),pattern=AdultIDs[i],fixed=F),AdultIDs[!AdultIDs==AdultIDs[i]]]
+
+    ## for n.vt_ss
+    within_out[[2]][[i]] <- mat_out[[2]][grep(x=rownames(mat_out[[2]]),pattern=AdultIDs[i],fixed=F),grep(x=colnames(mat_out[[2]]),pattern=AdultIDs[i],fixed=F)]
+    between_out[[2]][[i]] <- mat_out[[2]][grep(x=rownames(mat_out[[2]]),pattern=AdultIDs[i],fixed=F),AdultIDs[!AdultIDs==AdultIDs[i]]]
+  }
+  if(within==TRUE){return(within_out)
+  }else(return(between_out))
+}
+
+# OFFSPRING-PARENTS OVERLAP
+
+prop_vt_across_offspring_parent <- matrix(0, nrow=3*8, ncol=7)
+rownames(prop_vt_across_offspring_parent) <- adultID
+colnames(prop_vt_across_offspring_parent) <- c("Overall.mean","Overall.sd","Overall.se","Sponge_specific.mean","Sponge_specific.sd","Sponge_specific.se","n")
+
+prop_vt_across_offspring_parent[,1] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=TRUE)[[1]],function(x) mean(x,na.rm=T)))))
+prop_vt_across_offspring_parent[,4] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=TRUE)[[2]],function(x) mean(x,na.rm=T)))))
+
+prop_vt_across_offspring_parent[,2] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=TRUE)[[1]],function(x) sd(x,na.rm=T)))))
+prop_vt_across_offspring_parent[,5] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=TRUE)[[2]],function(x) sd(x,na.rm=T)))))
+
+prop_vt_across_offspring_parent[,7] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=TRUE)[[1]],function(x) length(x))))) #this is the number of comparisons which is the same across overall and sponge-specific
+
+prop_vt_across_offspring_parent[,3] <- prop_vt_across_offspring_parent[,2] / sqrt(prop_vt_across_offspring_parent[,7])
+prop_vt_across_offspring_parent[,6] <- prop_vt_across_offspring_parent[,5] / sqrt(prop_vt_across_offspring_parent[,7])
+
+prop_vt_across_offspring_parent <- as.data.frame(prop_vt_across_offspring_parent)
+prop_vt_across_offspring_parent$comparison <- "offspring_parent"
+prop_vt_across_offspring_parent$sourceAdult <- rownames(prop_vt_across_offspring_parent)
+prop_vt_across_offspring_parent$sponge_species <- Reduce(c,sapply(sponge_species, function(x) rep(x,3),simplify = T))
+prop_vt_across_offspring_parent$sponge_species <- factor(prop_vt_across_offspring_parent$sponge_species, levels=c(unique(prop_vt_across_offspring_parent$sponge_species)))
+prop_vt_across_offspring_parent <- prop_vt_across_offspring_parent[,-7]
+
+prop_vt_across_offspring_parent_m <- reshape2::melt(prop_vt_across_offspring_parent)
+prop_vt_across_offspring_parent_m$summary <- stringr::str_split_fixed(prop_vt_across_offspring_parent_m$variable, "\\.",2)[,2]
+
+# LARVAE-CONSPECIFIC ADULTS OVERLAP
+
+prop_vt_across_larvae_adults <-matrix(0, nrow=3*8, ncol=7)
+rownames(prop_vt_across_larvae_adults) <- adultID
+colnames(prop_vt_across_larvae_adults) <- c("Overall.mean","Overall.sd","Overall.se","Sponge_specific.mean","Sponge_specific.sd","Sponge_specific.se","n")
+
+prop_vt_across_larvae_adults[,1] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=FALSE)[[1]],function(x) mean(x,na.rm=T)))))
+prop_vt_across_larvae_adults[,4] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=FALSE)[[2]],function(x) mean(x,na.rm=T)))))
+
+prop_vt_across_larvae_adults[,2] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=FALSE)[[1]],function(x) sd(x,na.rm=T)))))
+prop_vt_across_larvae_adults[,5] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=FALSE)[[2]],function(x) sd(x,na.rm=T)))))
+
+prop_vt_across_larvae_adults[,7] <- unlist(lapply(sponge_species_list,function(y) unlist(lapply(larvae_adult_overlap_stats2(y,within=FALSE)[[1]],function(x) length(x)))))
+
+prop_vt_across_larvae_adults[,3] <- prop_vt_across_larvae_adults[,2] / sqrt(prop_vt_across_larvae_adults[,7])
+prop_vt_across_larvae_adults[,6] <- prop_vt_across_larvae_adults[,5] / sqrt(prop_vt_across_larvae_adults[,7])
+
+prop_vt_across_larvae_adults <- as.data.frame(prop_vt_across_larvae_adults)
+prop_vt_across_larvae_adults$comparison <- "larvae_adults"
+prop_vt_across_larvae_adults$sourceAdult <- rownames(prop_vt_across_larvae_adults)
+prop_vt_across_larvae_adults$sponge_species <- Reduce(c,sapply(sponge_species, function(x) rep(x,3),simplify = T))
+prop_vt_across_larvae_adults$sponge_species <- factor(prop_vt_across_larvae_adults$sponge_species, levels=c(unique(prop_vt_across_larvae_adults$sponge_species)))
+prop_vt_across_larvae_adults <- prop_vt_across_larvae_adults[,-7]
+
+prop_vt_across_larvae_adults_m <- reshape2::melt(prop_vt_across_larvae_adults)
+prop_vt_across_larvae_adults_m$summary <- stringr::str_split_fixed(prop_vt_across_larvae_adults_m$variable, "\\.",2)[,2]
+
+prop_vt_across_m <- rbind(prop_vt_across_offspring_parent_m,prop_vt_across_larvae_adults_m)
+prop_vt_across_m_mean <- prop_vt_across_m[prop_vt_across_m$summary %in% "mean",]
+prop_vt_across_m_se <- prop_vt_across_m[prop_vt_across_m$summary %in% "se",]
+prop_vt_across_m_mean$sourceAdult <- factor(prop_vt_across_m_mean$sourceAdult, levels=unique(prop_vt_across_m_mean$sourceAdult))
+prop_vt_across_m_mean$variable <- as.character(prop_vt_across_m_mean$variable)
+
+p1 <- ggplot(prop_vt_across_m_mean, aes(x=fct_rev(fct_infreq(variable)),y=value*100,fill=comparison)) + geom_bar(stat="identity", position=position_dodge()) + facet_wrap(~sourceAdult,ncol=3) + coord_flip(ylim=c(0,100)) + xlab(NULL) + ylab("Percent shared taxa") + scale_y_continuous(breaks=seq(0.0, 100, 25)) + scale_fill_manual("", values=c("#009E73","#e79f00"), guide = guide_legend()) + scale_x_discrete(labels=setNames(c("Overall","Sponge-specific"),c("Overall.mean","Sponge_specific.mean"))) + theme_bw() +
+  theme(
+    legend.position="bottom",
+    #strip.text.x = element_blank(),
+    strip.background = element_blank(),
+    #panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(fill=NA, size=0.2),
+    axis.line = element_blank(),
+    axis.ticks = element_line(colour = "black", size=0.2),
+    axis.text.y = element_text(size=12),
+    axis.title.y = element_text(size=13),
+    axis.text.x = element_text(size=12),
+    legend.text=element_text(size=9))
+
+print(p1)
+
+larvae_adult_overlap_n_tot <- melt(rowr::cbind.fill(data.frame(within=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=TRUE)[[1]]))),data.frame(between=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=FALSE)[[1]]))),fill = NA))[!is.na(melt(rowr::cbind.fill(data.frame(within=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=TRUE)[[1]]))),data.frame(between=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=FALSE)[[1]]))),fill = NA))$value),]
+larvae_adult_overlap_n_ss <-  melt(rowr::cbind.fill(data.frame(within=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=TRUE)[[2]]))),data.frame(between=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=FALSE)[[2]]))),fill = NA))[!is.na(melt(rowr::cbind.fill(data.frame(within=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=TRUE)[[2]]))),data.frame(between=unlist(lapply(sponge_species_list,function(x) larvae_adult_overlap_stats2(x,within=FALSE)[[2]]))),fill = NA))$value),]
+larvae_adult_overlap_n_tot$group <- "Overall"
+larvae_adult_overlap_n_ss$group <- "Sponge_specific"
+larvae_adult_overlap <- rbind(larvae_adult_overlap_n_tot,larvae_adult_overlap_n_ss)
+
+larvae_adult_overlap$grp <- NA
+larvae_adult_overlap[larvae_adult_overlap$variable %in% "within" & larvae_adult_overlap$group %in% "Overall" ,]$grp <- "O Parent-offspring"
+larvae_adult_overlap[larvae_adult_overlap$variable %in% "between" & larvae_adult_overlap$group %in% "Overall" ,]$grp <- "O Non-parent adult-larva"
+larvae_adult_overlap[larvae_adult_overlap$variable %in% "within" & larvae_adult_overlap$group %in% "Sponge_specific" ,]$grp <- "S Parent-offspring"
+larvae_adult_overlap[larvae_adult_overlap$variable %in% "between" & larvae_adult_overlap$group %in% "Sponge_specific" ,]$grp <- "S Non-parent adult-larva"
+
+```
+
+## Figure S12
+
+```{r fig2, warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE, fig.height=8}
+
+## Code to compute percent shared between larvae only, i.e., among siblings and non-siblings 
+## Fig S12
+
+subset_larvae <- all_species_pool_track[all_species_pool_track$sample_type=="larvae",]
+
+test_larvae_larvae <- expand.grid(unique(subset_larvae$run_accession),unique(subset_larvae$run_accession),stringsAsFactors=F)
+test_larvae_larvae$larvae_1 <- all_species_pool_track[match(test_larvae_larvae$Var1,all_species_pool_track$run_accession),]$host_id
+test_larvae_larvae$larvae_2 <- all_species_pool_track[match(test_larvae_larvae$Var2,all_species_pool_track$run_accession),]$host_id
+test_larvae_larvae$sourceAdult_1 <- all_species_pool_track[match(test_larvae_larvae$Var1,all_species_pool_track$run_accession),]$source_adult
+test_larvae_larvae$sourceAdult_2 <- all_species_pool_track[match(test_larvae_larvae$Var2,all_species_pool_track$run_accession),]$source_adult
+test_larvae_larvae$n.vt_1 <- NA
+test_larvae_larvae$n.vt_2 <- NA
+test_larvae_larvae$n.vt_shared <- NA
+
+vt_shared <- function(overall=T){
+
+  for(i in 1:nrow(test_larvae_larvae)){
+  #print(i)
+
+  if(overall==F){
+  #This identifies vt-taxa in larvae 1
+  x <- seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_larvae$Var1[i],]$run_accession,][,colSums(seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_larvae$Var1[i],]$run_accession,])>0]
+  y <- seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_1[i],]$run_accession,][,colSums(seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_1[i],]$run_accession,])>0]
+  z <- intersect(colnames(x),colnames(y)) #vt taxa in focal offspring
+  test_larvae_larvae$n.vt_1[i] <- ifelse(identical(length(z),character(0)),0,length(z))
+
+  #This identifies vt-taxa in larvae 2
+  xx <- seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_larvae$Var2[i],]$run_accession,][,colSums(seqtab_larvae[,setdiff(colnames(seqtab_larvae),colnames(seqtab_water))][df_larvae[df_larvae$run_accession==test_larvae_larvae$Var2[i],]$run_accession,])>0]
+  yy <- seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_2[i],]$run_accession,][,colSums(seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_2[i],]$run_accession,])>0]
+  zz <- intersect(colnames(xx),colnames(yy))
+  test_larvae_larvae$n.vt_2[i] <- ifelse(identical(length(zz),character(0)),0,length(zz))
+  }else{
+
+  #This identifies vt-taxa in larvae 1 present in seawater
+  x <- seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_larvae$Var1[i],]$run_accession,][,colSums(seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_larvae$Var1[i],]$run_accession,])>0]
+  y <- seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_1[i],]$run_accession,][,colSums(seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_1[i],]$run_accession,])>0]
+  z <- intersect(colnames(x),colnames(y)) #vt taxa in focal offspring
+  test_larvae_larvae$n.vt_1[i] <- ifelse(identical(length(z),character(0)),0,length(z))
+
+  #This identifies vt-taxa in larvae 2 present in seawater
+  xx <- seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_larvae$Var2[i],]$run_accession,][,colSums(seqtab_larvae[df_larvae[df_larvae$run_accession==test_larvae_larvae$Var2[i],]$run_accession,])>0]
+  yy <- seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_2[i],]$run_accession,][,colSums(seqtab_adults[df_adults[df_adults$host_id==test_larvae_larvae$sourceAdult_2[i],]$run_accession,])>0]
+  zz <- intersect(colnames(xx),colnames(yy))
+  test_larvae_larvae$n.vt_2[i] <- ifelse(identical(length(zz),character(0)),0,length(zz))
+  }
+  # vt taxa shared
+  test_larvae_larvae$n.vt_shared[i] <- ifelse(identical(length(intersect(z,zz)),character(0)),0,length(intersect(z,zz)))
+  }
+  return(test_larvae_larvae)
+}
+
+## For overall vertical transmission
+test_larvae_larvae <- vt_shared(overall=T)
+
+test_larvae_larvae_mat_agg_1 <- matrix(NA,nrow=length(unique(test_larvae_larvae$Var1)),ncol=length(unique(test_larvae_larvae$Var1)))
+rownames(test_larvae_larvae_mat_agg_1) <- as.character(subset_larvae$host_id)
+colnames(test_larvae_larvae_mat_agg_1) <- as.character(subset_larvae$host_id)
+
+# Populate matrices
+for(n in 1:nrow(subset_larvae)){
+  test_larvae_larvae_mat_agg_1[,n] <- test_larvae_larvae[test_larvae_larvae$Var1==unique(subset_larvae$run_accession)[n],]$n.vt_shared
+}
+
+# Melt again
+combinations_1 <- expand.grid(unique(subset_larvae$host_id),unique(subset_larvae$host_id),stringsAsFactors=F)
+combinations_1$sum <- NA
+combinations_1$n.vt_1 <- test_larvae_larvae$n.vt_1
+combinations_1$n.vt_2 <- test_larvae_larvae$n.vt_2
+
+# Fill the sum column
+for(n in 1:nrow(combinations_1)){
+  combinations_1$sum[n] <- ifelse(identical(rownames(test_larvae_larvae_mat_agg_1[str_split_fixed(rownames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var1,"\\.",3)[,3][n],str_split_fixed(colnames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var1,"\\.",3)[,3][n]]),colnames(test_larvae_larvae_mat_agg_1[str_split_fixed(rownames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var2,"\\.",3)[,3][n],str_split_fixed(colnames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var2,"\\.",3)[,3][n]])),sum(test_larvae_larvae_mat_agg_1[rownames(test_larvae_larvae_mat_agg_1)==combinations_1$Var1[n],colnames(test_larvae_larvae_mat_agg_1)==combinations_1$Var2[n]],na.rm=T),0)}
+
+# Calculate Jaccard index for each set of siblings--offspring--from the same parent:
+# Jaccard index: J(A,B)=intercept(A,B)/union(A,B)=intercept(A,B)/(A+B-intercept(A,B))
+
+sibling_similarity <- combinations_1
+sibling_similarity$A1 <- stringr::str_split_fixed(sibling_similarity$Var1, "\\.", 3)[,3]
+sibling_similarity$A2 <- stringr::str_split_fixed(sibling_similarity$Var2, "\\.", 3)[,3]
+
+# Remove parents/adults with only 1 offspring--otherwise leads to self comparisons
+names(table(df_larvae$sourceHost)[table(df_larvae$sourceHost)<=1])
+sibling_similarity <- sibling_similarity[!sibling_similarity$A1 %in% names(table(df_larvae$sourceHost)[table(df_larvae$sourceHost)<=1]) & !sibling_similarity$A2 %in% names(table(df_larvae$sourceHost)[table(df_larvae$sourceHost)<=1]),]
+sibling_similarity <- subset(sibling_similarity, as.character(sibling_similarity$A1)==as.character(sibling_similarity$A2))
+sibling_similarity$JaccIdx <- NA
+
+for(i in 1:nrow(sibling_similarity)){
+  sibling_similarity$JaccIdx[i] <- sibling_similarity$sum[i]/((sibling_similarity$n.vt_1[i]+sibling_similarity$n.vt_2[i])-sibling_similarity$sum[i])
+}
+
+# This removes self comparinos , such as L.a.Aae.12.1b-L.a.Aae.12.1b
+sibling_similarity <- subset(sibling_similarity, as.character(sibling_similarity$Var1)!=as.character(sibling_similarity$Var2))
+
+sibling_similarity$Var1 <- factor(sibling_similarity$Var1, levels=unique(sibling_similarity$Var2))
+sibling_similarity$Var2 <- factor(sibling_similarity$Var2, levels=unique(sibling_similarity$Var2))
+sibling_similarity_mat <- xtabs(data=sibling_similarity,JaccIdx~Var1+Var2)
+diag(sibling_similarity_mat) <- 1
+
+sibling_similarity_mat_v2 <- sibling_similarity_mat
+rownames(sibling_similarity_mat_v2) <- stringr::str_split_fixed(rownames(sibling_similarity_mat_v2), "\\.", 3)[,3]
+colnames(sibling_similarity_mat_v2) <- stringr::str_split_fixed(colnames(sibling_similarity_mat_v2), "\\.", 3)[,3]
+
+# Change back to larvae_IDs
+rownames(sibling_similarity_mat_v2) <- colnames(sibling_similarity_mat_v2) <- rownames(sibling_similarity_mat)
+
+# Non-siblings--offspring--from the conspecific adults
+# Calculate Jaccard index for each set of non-siblings--offspring--from the conspecific adults:
+# Jaccard index: J(A,B)=intercept(A,B)/union(A,B)=intercept(A,B)/(A+B-intercept(A,B))
+
+combinations_1b <- expand.grid(unique(subset_larvae$host_id),unique(subset_larvae$host_id),stringsAsFactors=F)
+combinations_1b$sum <- NA
+combinations_1b$n.vt_1 <- test_larvae_larvae$n.vt_1
+combinations_1b$n.vt_2 <- test_larvae_larvae$n.vt_2
+
+for(n in 1:nrow(combinations_1b)){
+  combinations_1b$sum[n] <- test_larvae_larvae_mat_agg_1[rownames(test_larvae_larvae_mat_agg_1)==combinations_1b$Var1[n],colnames(test_larvae_larvae_mat_agg_1)==combinations_1b$Var2[n]]
+}
+
+non_sibling_similarity <- combinations_1b
+non_sibling_similarity$A1 <- stringr::str_split_fixed(non_sibling_similarity$Var1, "\\.", 3)[,3]
+non_sibling_similarity$A2 <- stringr::str_split_fixed(non_sibling_similarity$Var2, "\\.", 3)[,3]
+non_sibling_similarity <- subset(non_sibling_similarity, as.character(non_sibling_similarity$A1)!=as.character(non_sibling_similarity$A2))
+
+for(i in 1:nrow(non_sibling_similarity)){
+  non_sibling_similarity$JaccIdx[i] <- non_sibling_similarity$sum[i]/((non_sibling_similarity$n.vt_1[i]+non_sibling_similarity$n.vt_2[i])-non_sibling_similarity$sum[i])}
+
+non_sibling_similarity$Var1 <- factor(non_sibling_similarity$Var1, levels=unique(non_sibling_similarity$Var2))
+non_sibling_similarity$Var2 <- factor(non_sibling_similarity$Var2, levels=unique(non_sibling_similarity$Var2))
+non_sibling_similarity_mat <- xtabs(data=non_sibling_similarity,JaccIdx~Var1+Var2)
+diag(non_sibling_similarity_mat) <- 1
+
+non_sibling_similarity$species1 <- stringr::str_split_fixed(non_sibling_similarity$A1, "\\.", 2)[,1]
+non_sibling_similarity$species2 <- stringr::str_split_fixed(non_sibling_similarity$A2, "\\.", 2)[,1]
+non_sibling_similarity <- subset(non_sibling_similarity, as.character(non_sibling_similarity$species1)==as.character(non_sibling_similarity$species2))
+
+## Combine sibling and non-sibling similarity
+sibling_non_sibling_m <- melt(non_sibling_similarity_mat)
+sibling_non_sibling_m$A1 <- stringr::str_split_fixed(sibling_non_sibling_m$Var1, "\\.", 4)[,3]
+sibling_non_sibling_m$A2 <- stringr::str_split_fixed(sibling_non_sibling_m$Var2, "\\.", 4)[,3]
+sibling_non_sibling_m <- subset(sibling_non_sibling_m, as.character(sibling_non_sibling_m$A1)==as.character(sibling_non_sibling_m$A2))
+sibling_non_sibling_m$Var1 <- as.character(sibling_non_sibling_m$Var1)
+sibling_non_sibling_m$Var2 <- as.character(sibling_non_sibling_m$Var2)
+
+sibling_similarity_mat_v2_m <- melt(sibling_similarity_mat_v2)
+sibling_similarity_mat_v2_m$Var1 <- as.character(sibling_similarity_mat_v2_m$Var1)
+sibling_similarity_mat_v2_m$Var2 <- as.character(sibling_similarity_mat_v2_m$Var2)
+
+sibling_similarity_mat_v2_m$A1 <- stringr::str_split_fixed(sibling_similarity_mat_v2_m$Var1, "\\.", 4)[,3]
+sibling_similarity_mat_v2_m$A2 <- stringr::str_split_fixed(sibling_similarity_mat_v2_m$Var2, "\\.", 4)[,3]
+sibling_similarity_mat_v2_m <- subset(sibling_similarity_mat_v2_m, as.character(sibling_similarity_mat_v2_m$A1)==as.character(sibling_similarity_mat_v2_m$A2))
+
+sibling_non_sibling_similarity_comb <- merge(sibling_non_sibling_m,sibling_similarity_mat_v2_m,by=c("Var1","Var2","value","A1","A2"), all=T)
+
+sibling_non_sibling_similarity_comb$A1 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var1, "\\.", 3)[,3]
+sibling_non_sibling_similarity_comb$A2 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var2, "\\.", 3)[,3]
+
+sibling_non_sibling_similarity_comb$S1 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var1, "\\.", 4)[,3]
+sibling_non_sibling_similarity_comb$S2 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var2, "\\.", 4)[,3]
+
+sibling_non_sibling_similarity_comb$S1 <- factor(sibling_non_sibling_similarity_comb$S1, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+sibling_non_sibling_similarity_comb$S2 <- factor(sibling_non_sibling_similarity_comb$S2, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+
+sibling_non_sibling_similarity_comb.mat <- xtabs(data=sibling_non_sibling_similarity_comb,value~Var1+Var2)
+sibling_non_sibling_similarity_comb.mat <- round(sibling_non_sibling_similarity_comb.mat*100,0)
+
+par(mfrow=c(4,2))
+for(i in 1:length(unique(sibling_non_sibling_similarity_comb$S1))){
+  corrplot::corrplot(sibling_non_sibling_similarity_comb.mat[grep(rownames(sibling_non_sibling_similarity_comb.mat),pattern=levels(sibling_non_sibling_similarity_comb$S1)[i]),grep(colnames(sibling_non_sibling_similarity_comb.mat),pattern=levels(sibling_non_sibling_similarity_comb$S2)[i])],title=levels(sibling_non_sibling_similarity_comb$S1)[i], mar=c(0,0,2.5,0), outline=FALSE, method="shade", type="upper", bg="white", diag=T, is.corr=FALSE, cl.lim=c(0,100), tl.col="black", tl.srt=45,tl.cex=0.5, number.cex=0.8, addCoef.col="black", cl.pos="b", tl.pos="n")
+}
+
+# For sponge-specific vertical transmission
+test_larvae_larvae <- vt_shared(overall=F)
+
+test_larvae_larvae_mat_agg_1 <- matrix(NA,nrow=length(unique(test_larvae_larvae$Var1)),ncol=length(unique(test_larvae_larvae$Var1)))
+rownames(test_larvae_larvae_mat_agg_1) <- as.character(subset_larvae$host_id)
+colnames(test_larvae_larvae_mat_agg_1) <- as.character(subset_larvae$host_id)
+
+# Populate matrices
+for(n in 1:nrow(subset_larvae)){
+  test_larvae_larvae_mat_agg_1[,n] <- test_larvae_larvae[test_larvae_larvae$Var1==unique(subset_larvae$run_accession)[n],]$n.vt_shared
+}
+
+# Melt again
+combinations_1 <- expand.grid(unique(subset_larvae$host_id),unique(subset_larvae$host_id),stringsAsFactors=F)
+combinations_1$sum <- NA
+combinations_1$n.vt_1 <- test_larvae_larvae$n.vt_1
+combinations_1$n.vt_2 <- test_larvae_larvae$n.vt_2
+
+# Fill the sum column
+for(n in 1:nrow(combinations_1)){
+  combinations_1$sum[n] <- ifelse(identical(rownames(test_larvae_larvae_mat_agg_1[str_split_fixed(rownames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var1,"\\.",3)[,3][n],str_split_fixed(colnames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var1,"\\.",3)[,3][n]]),colnames(test_larvae_larvae_mat_agg_1[str_split_fixed(rownames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var2,"\\.",3)[,3][n],str_split_fixed(colnames(test_larvae_larvae_mat_agg_1),"\\.",3)[,3]==str_split_fixed(combinations_1$Var2,"\\.",3)[,3][n]])),sum(test_larvae_larvae_mat_agg_1[rownames(test_larvae_larvae_mat_agg_1)==combinations_1$Var1[n],colnames(test_larvae_larvae_mat_agg_1)==combinations_1$Var2[n]],na.rm=T),0)
+}
+
+# Calculate Jaccard index for each set of siblings--offspring--from the same parent:
+# Jaccard index: J(A,B)=intercept(A,B)/union(A,B)=intercept(A,B)/(A+B-intercept(A,B))
+
+sibling_similarity <- combinations_1
+sibling_similarity$A1 <- stringr::str_split_fixed(sibling_similarity$Var1, "\\.", 3)[,3]
+sibling_similarity$A2 <- stringr::str_split_fixed(sibling_similarity$Var2, "\\.", 3)[,3]
+
+# Remove parents/adults with only 1 offspring--otherwise leads to self comparisons
+names(table(df_larvae$sourceHost)[table(df_larvae$sourceHost)<=1])
+sibling_similarity <- sibling_similarity[!sibling_similarity$A1 %in% names(table(df_larvae$sourceHost)[table(df_larvae$sourceHost)<=1]) & !sibling_similarity$A2 %in% names(table(df_larvae$sourceHost)[table(df_larvae$sourceHost)<=1]),]
+sibling_similarity <- subset(sibling_similarity, as.character(sibling_similarity$A1)==as.character(sibling_similarity$A2))
+sibling_similarity$JaccIdx <- NA
+
+for(i in 1:nrow(sibling_similarity)){
+  sibling_similarity$JaccIdx[i] <- sibling_similarity$sum[i]/((sibling_similarity$n.vt_1[i]+sibling_similarity$n.vt_2[i])-sibling_similarity$sum[i])}
+
+# This removes self comparinos , such as L.a.Aae.12.1b-L.a.Aae.12.1b
+sibling_similarity <- subset(sibling_similarity, as.character(sibling_similarity$Var1)!=as.character(sibling_similarity$Var2))
+
+sibling_similarity$Var1 <- factor(sibling_similarity$Var1, levels=unique(sibling_similarity$Var2))
+sibling_similarity$Var2 <- factor(sibling_similarity$Var2, levels=unique(sibling_similarity$Var2))
+sibling_similarity_mat <- xtabs(data=sibling_similarity,JaccIdx~Var1+Var2)
+diag(sibling_similarity_mat) <- 1
+
+sibling_similarity_mat_v2 <- sibling_similarity_mat
+rownames(sibling_similarity_mat_v2) <- stringr::str_split_fixed(rownames(sibling_similarity_mat_v2), "\\.", 3)[,3]
+colnames(sibling_similarity_mat_v2) <- stringr::str_split_fixed(colnames(sibling_similarity_mat_v2), "\\.", 3)[,3]
+
+# Change back to larvae_IDs
+rownames(sibling_similarity_mat_v2) <- colnames(sibling_similarity_mat_v2) <- rownames(sibling_similarity_mat)
+
+# Non-siblings--offspring--from the conspecific adults
+# Calculate Jaccard index for each set of non-siblings--offspring--from the conspecific adults:
+# Jaccard index: J(A,B)=intercept(A,B)/union(A,B)=intercept(A,B)/(A+B-intercept(A,B))
+
+combinations_1b <- expand.grid(unique(subset_larvae$host_id),unique(subset_larvae$host_id),stringsAsFactors=F)
+combinations_1b$sum <- NA
+combinations_1b$n.vt_1 <- test_larvae_larvae$n.vt_1
+combinations_1b$n.vt_2 <- test_larvae_larvae$n.vt_2
+
+for(n in 1:nrow(combinations_1b)){
+  combinations_1b$sum[n] <- test_larvae_larvae_mat_agg_1[rownames(test_larvae_larvae_mat_agg_1)==combinations_1b$Var1[n],colnames(test_larvae_larvae_mat_agg_1)==combinations_1b$Var2[n]]
+}
+
+non_sibling_similarity <- combinations_1b
+non_sibling_similarity$A1 <- stringr::str_split_fixed(non_sibling_similarity$Var1, "\\.", 3)[,3]
+non_sibling_similarity$A2 <- stringr::str_split_fixed(non_sibling_similarity$Var2, "\\.", 3)[,3]
+non_sibling_similarity <- subset(non_sibling_similarity, as.character(non_sibling_similarity$A1)!=as.character(non_sibling_similarity$A2))
+
+for(i in 1:nrow(non_sibling_similarity)){
+  non_sibling_similarity$JaccIdx[i] <- non_sibling_similarity$sum[i]/((non_sibling_similarity$n.vt_1[i]+non_sibling_similarity$n.vt_2[i])-non_sibling_similarity$sum[i])
+}
+
+non_sibling_similarity$Var1 <- factor(non_sibling_similarity$Var1, levels=unique(non_sibling_similarity$Var2))
+non_sibling_similarity$Var2 <- factor(non_sibling_similarity$Var2, levels=unique(non_sibling_similarity$Var2))
+non_sibling_similarity_mat <- xtabs(data=non_sibling_similarity,JaccIdx~Var1+Var2)
+diag(non_sibling_similarity_mat) <- 1
+
+non_sibling_similarity$species1 <- stringr::str_split_fixed(non_sibling_similarity$A1, "\\.", 2)[,1]
+non_sibling_similarity$species2 <- stringr::str_split_fixed(non_sibling_similarity$A2, "\\.", 2)[,1]
+non_sibling_similarity <- subset(non_sibling_similarity, as.character(non_sibling_similarity$species1)==as.character(non_sibling_similarity$species2))
+
+## Combine sibling and non-sibling similarity
+sibling_non_sibling_m <- melt(non_sibling_similarity_mat)
+sibling_non_sibling_m$A1 <- stringr::str_split_fixed(sibling_non_sibling_m$Var1, "\\.", 4)[,3]
+sibling_non_sibling_m$A2 <- stringr::str_split_fixed(sibling_non_sibling_m$Var2, "\\.", 4)[,3]
+sibling_non_sibling_m <- subset(sibling_non_sibling_m, as.character(sibling_non_sibling_m$A1)==as.character(sibling_non_sibling_m$A2))
+sibling_non_sibling_m$Var1 <- as.character(sibling_non_sibling_m$Var1)
+sibling_non_sibling_m$Var2 <- as.character(sibling_non_sibling_m$Var2)
+
+sibling_similarity_mat_v2_m <- melt(sibling_similarity_mat_v2)
+sibling_similarity_mat_v2_m$Var1 <- as.character(sibling_similarity_mat_v2_m$Var1)
+sibling_similarity_mat_v2_m$Var2 <- as.character(sibling_similarity_mat_v2_m$Var2)
+
+sibling_similarity_mat_v2_m$A1 <- stringr::str_split_fixed(sibling_similarity_mat_v2_m$Var1, "\\.", 4)[,3]
+sibling_similarity_mat_v2_m$A2 <- stringr::str_split_fixed(sibling_similarity_mat_v2_m$Var2, "\\.", 4)[,3]
+sibling_similarity_mat_v2_m <- subset(sibling_similarity_mat_v2_m, as.character(sibling_similarity_mat_v2_m$A1)==as.character(sibling_similarity_mat_v2_m$A2))
+
+sibling_non_sibling_similarity_comb <- merge(sibling_non_sibling_m,sibling_similarity_mat_v2_m,by=c("Var1","Var2","value","A1","A2"), all=T)
+
+sibling_non_sibling_similarity_comb$A1 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var1, "\\.", 3)[,3]
+sibling_non_sibling_similarity_comb$A2 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var2, "\\.", 3)[,3]
+
+sibling_non_sibling_similarity_comb$S1 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var1, "\\.", 4)[,3]
+sibling_non_sibling_similarity_comb$S2 <- stringr::str_split_fixed(sibling_non_sibling_similarity_comb$Var2, "\\.", 4)[,3]
+
+sibling_non_sibling_similarity_comb$S1 <- factor(sibling_non_sibling_similarity_comb$S1, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+sibling_non_sibling_similarity_comb$S2 <- factor(sibling_non_sibling_similarity_comb$S2, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+
+sibling_non_sibling_similarity_comb.mat <- xtabs(data=sibling_non_sibling_similarity_comb,value~Var1+Var2)
+
+sibling_non_sibling_similarity_comb.mat <- round(sibling_non_sibling_similarity_comb.mat*100,0)
+
+par(mfrow=c(4,2))
+for(i in 1:length(unique(sibling_non_sibling_similarity_comb$S1))){
+  corrplot::corrplot(sibling_non_sibling_similarity_comb.mat[grep(rownames(sibling_non_sibling_similarity_comb.mat),pattern=levels(sibling_non_sibling_similarity_comb$S1)[i]),grep(colnames(sibling_non_sibling_similarity_comb.mat),pattern=levels(sibling_non_sibling_similarity_comb$S2)[i])],title=levels(sibling_non_sibling_similarity_comb$S1)[i], mar=c(0,0,2.5,0), outline=FALSE, method="shade", type="upper", bg="white", diag=T, is.corr=FALSE, cl.lim=c(0,100), tl.col="black", tl.srt=45,tl.cex=0.5, number.cex=0.8, addCoef.col="black", cl.pos="b", tl.pos="n")
+}
+```
+
+## Figure 4
+
+```{r fig3, warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE, fig.height=6}
+
+## Code for combine plot showing offspring-parent & larvae-conspecific adult similarity, and sibling & non-sibling similarity
+## Figure 4
+
+library(beeswarm)
+library(scales)
+
+# Sibling vs non-sibling similarity
+
+sib_sim_ls <- vector("list",length(unique(sibling_similarity$A1)))
+non_sib_sim_ls <- vector("list",length(unique(non_sibling_similarity$A1)))
+
+for(i in 1:length(unique(sibling_similarity$A1))){
+  sib_sim_ls[[i]] <- sibling_similarity_mat_v2[grepl(x=rownames(sibling_similarity_mat_v2),pattern=unique(sibling_similarity$A1)[i]),grepl(x=colnames(sibling_similarity_mat_v2),pattern=unique(sibling_similarity$A1)[i])][upper.tri(sibling_similarity_mat_v2[grepl(x=rownames(sibling_similarity_mat_v2),pattern=unique(sibling_similarity$A1)[i]),grepl(x=colnames(sibling_similarity_mat_v2),pattern=unique(sibling_similarity$A1)[i])],diag=F)]}
+
+for(i in 1:length(unique(non_sibling_similarity$A1))){
+  non_sib_sim_ls[[i]] <- non_sibling_similarity_mat[grepl(x=rownames(non_sibling_similarity_mat),pattern=unique(non_sibling_similarity$A1)[i]),grepl(x=colnames(non_sibling_similarity_mat),pattern=unique(non_sibling_similarity$A2)[i])]}
+
+## Where there are only two adults, the will be double compairsons
+# to figure this out, look at both:
+# unique(non_sibling_similarity$A1)
+# unique(non_sibling_similarity$A2)
+
+non_sib_sim_ls <- non_sib_sim_ls[c(-4,-7,-17)]
+non_sib_sim_ls <- lapply(non_sib_sim_ls, function(x) Reduce(c,x))
+
+df_sibs <- rbind(cbind(melt(sib_sim_ls),data.frame(group="sib")),cbind(melt(non_sib_sim_ls),data.frame(group="non_sib")))
+df_sibs$value <- df_sibs$value*100
+
+## Combine
+# larvae_adult_overlap (contains parent-offspring & adult-larvae proportions)
+# sibling_similarity & non_sibling_similarity (constains Jacc for VT in siblings & non-siblings)
+
+df_sibs <- rbind(cbind(reshape2::melt(sib_sim_ls),data.frame(group="sib")),cbind(reshape2::melt(non_sib_sim_ls),data.frame(group="non_sib")))
+df_sibs <- df_sibs[,c(1,3)]
+
+## Overall VT
+larvae_adult_overlap_test <- larvae_adult_overlap[larvae_adult_overlap$grp %in% c("O Parent-offspring","O Non-parent adult-larva"),]
+
+larvae_adult_overlap_test <- larvae_adult_overlap_test[,c(1,2)]
+colnames(larvae_adult_overlap_test)[1] <- "group"
+test_comb <- rbind(larvae_adult_overlap_test,df_sibs)
+
+test_comb$value <- test_comb$value*100
+test_comb$col <- NA
+test_comb[test_comb$group %in% "within",]$col <- '#e79f00'
+test_comb[test_comb$group %in% "between",]$col <- '#009E73'
+test_comb[test_comb$group %in% "sib",]$col <- '#9ebcda'
+test_comb[test_comb$group %in% "non_sib",]$col <- '#c994c7'
+
+boxplot(value~group, data=test_comb, ylim=c(0,70), frame.plot=F, cex.lab=1.1, cex.axis=1.1, outline=FALSE, notch=T, yaxt="n", xaxt="n")
+mtext(expression(italic("Overall ")*"vertical transmission"), side=3, line=0, cex=1.1)
+mtext("Percent shared taxa", side=2, line=2.5, cex=1.2)
+axis(side=1, 1:4, lwd=0, lwd.tick=0.5, labels=F)
+axis(side=2, lwd=0, lwd.tick=0.5, labels=T, las=2)
+text(1:4, y=par()$usr[3]-0.03*(par()$usr[4]-par()$usr[3]), srt=45, adj=1, xpd=T, labels=c(paste0("Parent-offspring"," ","(n=",table(test_comb$group)[1],")"),paste0("Non-parent \nadult-larvae"," ","(n=",table(test_comb$group)[2],")"),paste0("Siblings"," ","(n=",table(test_comb$group)[3],")"),paste0("Non-siblings"," ","(n=",table(test_comb$group)[4],")")))
+beeswarm(value~group,data=test_comb, pwcol=alpha(colour=test_comb$col, alpha=0.5), pch=16, corral="wrap", add=TRUE)
+legend(0.2,84, legend=expression(italic("ASVs")), bty = "n", pt.cex = 1, cex = 1, text.col = "black", horiz = F, inset = 0.1)
+box(lwd=0.5)
+
+## Sponge-specific VT
+
+larvae_adult_overlap_test <- larvae_adult_overlap[larvae_adult_overlap$grp %in% c("S Parent-offspring","S Non-parent adult-larva"),]
+
+larvae_adult_overlap_test <- larvae_adult_overlap_test[,c(1,2)]
+colnames(larvae_adult_overlap_test)[1] <- "group"
+test_comb <- rbind(larvae_adult_overlap_test,df_sibs)
+
+test_comb$value <- test_comb$value*100
+test_comb$col <- NA
+test_comb[test_comb$group %in% "within",]$col <- '#e79f00'
+test_comb[test_comb$group %in% "between",]$col <- '#009E73'
+test_comb[test_comb$group %in% "sib",]$col <- '#9ebcda'
+test_comb[test_comb$group %in% "non_sib",]$col <- '#c994c7'
+
+boxplot(value~group, data=test_comb, ylim=c(0,60), frame.plot=F, cex.lab=1.1, cex.axis=1.1, outline=FALSE, notch=T, yaxt="n", xaxt="n")
+mtext(expression(italic("Sponge-specific ")*"vertical transmission"), side=3, line=0, cex=1.1)
+mtext("Percent shared taxa", side=2, line=2.5, cex=1.2)
+axis(side=1, 1:4, lwd=0, lwd.tick=0.5, labels=F)
+axis(side=2, lwd=0, lwd.tick=0.5, labels=T, las=2)
+text(1:4, y=par()$usr[3]-0.03*(par()$usr[4]-par()$usr[3]), srt=45, adj=1, xpd=T, labels=c(paste0("Parent-offspring"," ","(n=",table(test_comb$group)[1],")"),paste0("Non-parent \nadult-larvae"," ","(n=",table(test_comb$group)[2],")"),paste0("Siblings"," ","(n=",table(test_comb$group)[3],")"),paste0("Non-siblings"," ","(n=",table(test_comb$group)[4],")")))
+beeswarm(value~group,data=test_comb, pwcol=alpha(colour=test_comb$col, alpha=0.5), pch=16, corral="wrap", add=TRUE)
+legend(0.2,105, legend=expression(italic("ASVs")), bty = "n", pt.cex = 1, cex = 1, text.col = "black", horiz = F, inset = 0.1)
+box(lwd=0.5)
+
+```
+
+## Figure S19-S20
+
+```{r fig4, warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE, fig.width=10, fig.height=10,fig.asp=1}
+
+## Code to compute percent shared taxa between any given pair of adults.
+## Figure S19-S20
+
+all_species_pool_track <- sample_data(ps)[sample_data(ps)$run_accession %in% setdiff(sample_data(ps)$run_accession, sample_data(ps)[grep(sample_data(ps)$host_id, pattern="Water")]$run_accession),]
+all_species_pool_track$host_id <- factor(all_species_pool_track$host_id)
+all_species_pool_track$sponge_species <- factor(all_species_pool_track$sponge_species, levels=c("Aplysina_aerophoba","Ircinia_oros","Ircinia_fasciculata","Crambe_crambe","Cliona_viridis","Dysidea_avara","Hemimycale_columella","Oscarella_lobularis"))
+all_species_pool_track <- all_species_pool_track[order(all_species_pool_track$sponge_species, all_species_pool_track$sample_type),]
+all_species_pool_track$sponge_species <- as.character(all_species_pool_track$sponge_species)
+
+subset_larvae <- all_species_pool_track[all_species_pool_track$sample_type=="larvae",]
+
+combinations_2b <- expand.grid(unique(subset_larvae$source_adult),unique(subset_larvae$source_adult),stringsAsFactors=F)
+combinations_2b$BC <- NA
+combinations_2b$jacc <- NA
+
+# remove adults with no offspring!
+combinations_2b <- combinations_2b[!combinations_2b$Var1 %in% c("Ior.11.5a","Ifa.15.5a","Hco.16.3a") & !combinations_2b$Var2 %in% c("Ior.11.5a","Ifa.15.5a","Hco.16.3a"),]
+
+## This is for overall VT 
+
+for(n in 1:nrow(combinations_2b)){
+  library(phyloseq)
+  #print(n)
+  
+  
+  if( combinations_2b$Var1[n] == combinations_2b$Var2[n] ) {
+    
+    # This computes the average Bray-Curtis / Jaccard similarity among siblings (i.e., SELF, or the diagonal in Figure 6)
+    
+    k <- otu_table(get(paste0("ps",".",combinations_2b$Var1[n],"_overall")))
+    
+    combinations_2b[n,]$BC <- mean(1-vegan::vegdist(as(k,"matrix"), method="bray"))
+    combinations_2b[n,]$jacc <- mean(1-vegan::vegdist(as(k,"matrix"), method="jaccard", binary=T),na.rm=T)
+    
+  }
+  
+  else{
+    
+    a <- otu_table(get(paste0("ps",".",combinations_2b$Var1[n],"_overall")))
+    b <- otu_table(get(paste0("ps",".",combinations_2b$Var2[n],"_overall")))
+    
+    z <- intersect(colnames(a), colnames(b))
+    
+    # This tests whether the intercept is zero (i.e., no shared VT taxa) hence the similarity coefficient equals 0
+    if(identical(z,character(0))){
+      
+      combinations_2b[n,]$BC <- 0
+      combinations_2b[n,]$jacc <- 0
+      
+    }else{
+      # Bray-Curtis similarity
+      a_abu = colSums(a)
+      b_abu = colSums(b)
+      
+      C_ab <- c()
+      for(i in 1:length(z)){
+        C_ab[i] <- min( colSums(a[,colnames(a) %in% z])[i], colSums(b[,colnames(b) %in% z])[i] )
+      }
+      combinations_2b[n,]$BC <- 2*sum(C_ab)/(sum(a_abu)+sum(b_abu))
+      
+      # Jaccard coefficient
+      a_n <- ncol(a)
+      b_n <- ncol(b)
+      ab_n <- length(z)
+      
+      combinations_2b[n,]$jacc <- ab_n/((a_n+b_n)-ab_n)
+      
+    }
+  }
+}
+
+combinations_2b$S1 <- stringr::str_split_fixed(combinations_2b$Var1, "\\.", 2)[,1]
+combinations_2b$S2 <- stringr::str_split_fixed(combinations_2b$Var2, "\\.", 2)[,1]
+
+combinations_2b$S1 <- factor(combinations_2b$S1, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+combinations_2b$S2 <- factor(combinations_2b$S2, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+
+combinations_2b$Var1 <- factor(combinations_2b$Var1, levels=unique(combinations_2b[order(combinations_2b$S1),]$Var1))
+combinations_2b$Var2 <- factor(combinations_2b$Var2, levels=unique(combinations_2b[order(combinations_2b$S2),]$Var2))
+
+test_larvae_larvae_mat_bc <- xtabs(data=combinations_2b,BC~Var1+Var2)
+test_larvae_larvae_mat_jacc <- xtabs(data=combinations_2b,jacc~Var1+Var2)
+
+test_larvae_larvae_mat_bc <- round(test_larvae_larvae_mat_bc*100,0)
+test_larvae_larvae_mat_jacc <- round(test_larvae_larvae_mat_jacc*100,0)
+
+par(mfrow=c(2,1),oma=c(5,0,5,0))
+corrplot::corrplot(test_larvae_larvae_mat_bc,method="shade",type="upper",bg="lightgray",diag=T,cl.lim=c(0,100),tl.col="black", tl.srt=90, tl.cex=0.6, number.cex = 0.3, is.corr=F,p.mat=test_larvae_larvae_mat_bc, tl.pos = "t", insig = "p-value", sig.level=0.0099)
+
+corrplot::corrplot(test_larvae_larvae_mat_jacc,method="shade",type="upper",bg="lightgray",diag=T,cl.lim=c(0,100),tl.col="black", tl.srt=90, tl.cex=0.6, number.cex = 0.3, is.corr=F,p.mat=test_larvae_larvae_mat_jacc, tl.pos = "t", insig = "p-value", sig.level=0.0099)
+
+## This is for VT sponge-specific
+
+for(n in 1:nrow(combinations_2b)){
+  library(phyloseq)
+  #print(n)
+  
+  # Skip the iteration for adults whose offspring we know doesn't contain any VT taxa. This produces NAs.
+  
+  if( combinations_2b$Var1[n] %in% c("Ifa.15.3a","Hco.16.5a.Q") | combinations_2b$Var2[n] %in% c("Ifa.15.3a","Hco.16.5a.Q") ) next
+  
+  else if( combinations_2b$Var1[n] == combinations_2b$Var2[n] ) {
+
+    # This computes the average Bray-Curtis / Jaccard similarity among siblings (i.e., SELF--diagonal)
+    
+    k <- otu_table(get(paste0("ps",".",combinations_2b$Var1[n],"_vt")))
+    
+    combinations_2b[n,]$BC <- mean(1-vegan::vegdist(as(k,"matrix"), method="bray"))
+    combinations_2b[n,]$jacc <- mean(1-vegan::vegdist(as(k,"matrix"), method="jaccard", binary=T),na.rm=T)
+    
+  }
+  
+  else{
+    
+    a <- otu_table(get(paste0("ps",".",combinations_2b$Var1[n],"_vt")))
+    b <- otu_table(get(paste0("ps",".",combinations_2b$Var2[n],"_vt")))
+    
+    z <- intersect(colnames(a), colnames(b))
+
+    # This tests whether the intercept is zero (i.e., no shared VT taxa) hence the similarity coefficient equals 0
+    if(identical(z,character(0))){
+      
+      combinations_2b[n,]$BC <- 0
+      combinations_2b[n,]$jacc <- 0
+      
+    }else{
+      # Bray-Curtis similarity
+      a_abu = colSums(a)
+      b_abu = colSums(b)
+      
+      C_ab <- c()
+      for(i in 1:length(z)){
+        C_ab[i] <- min( colSums(a[,colnames(a) %in% z])[i], colSums(b[,colnames(b) %in% z])[i] )
+      }
+      combinations_2b[n,]$BC <- 2*sum(C_ab)/(sum(a_abu)+sum(b_abu))
+      
+      # Jaccard coefficient
+      a_n <- ncol(a)
+      b_n <- ncol(b)
+      ab_n <- length(z)
+      
+      combinations_2b[n,]$jacc <- ab_n/((a_n+b_n)-ab_n)
+      
+    }
+  }
+}
+
+combinations_2b$S1 <- stringr::str_split_fixed(combinations_2b$Var1, "\\.", 2)[,1]
+combinations_2b$S2 <- stringr::str_split_fixed(combinations_2b$Var2, "\\.", 2)[,1]
+
+combinations_2b$S1 <- factor(combinations_2b$S1, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+combinations_2b$S2 <- factor(combinations_2b$S2, levels=c("Aae","Ior","Ifa","Ccr","Cvi","Dav","Hco","Olo"))
+
+combinations_2b$Var1 <- factor(combinations_2b$Var1, levels=unique(combinations_2b[order(combinations_2b$S1),]$Var1))
+combinations_2b$Var2 <- factor(combinations_2b$Var2, levels=unique(combinations_2b[order(combinations_2b$S2),]$Var2))
+
+test_larvae_larvae_mat_bc <- xtabs(data=combinations_2b,BC~Var1+Var2)
+test_larvae_larvae_mat_jacc <- xtabs(data=combinations_2b,jacc~Var1+Var2)
+
+test_larvae_larvae_mat_bc <- round(test_larvae_larvae_mat_bc*100,0)
+test_larvae_larvae_mat_jacc <- round(test_larvae_larvae_mat_jacc*100,0)
+
+par(mfrow=c(2,1),oma=c(5,0,5,0))
+corrplot::corrplot(test_larvae_larvae_mat_bc,method="shade",type="upper",bg="lightgray",diag=T,cl.lim=c(0,100),tl.col="black", tl.srt=90, tl.cex=0.6, number.cex = 0.3, is.corr=F, p.mat=test_larvae_larvae_mat_bc, tl.pos = "t", insig = "p-value", sig.level=0.0099)
+
+corrplot::corrplot(test_larvae_larvae_mat_jacc,method="shade",type="upper",bg="lightgray",diag=T,cl.lim=c(0,100),tl.col="black", tl.srt=90, tl.cex=0.6, number.cex = 0.3, is.corr=F, p.mat=test_larvae_larvae_mat_jacc, tl.pos = "t", insig = "p-value", sig.level=0.0099)
+```
+
+

@@ -1,0 +1,247 @@
+---
+title: "Vertical transmission of sponge microbiota is inconsistent and unfaithful"
+author: "Johannes Björk"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Neutrality analysis (Figure 2-3, and Figure S2-S4)
+
+```{r pressure, warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE}
+
+library(phyloseq)
+library(tidyverse)
+library(reshape2)
+library(MicEco) # for neutral model; devtools::install_github("Russel88/MicEco")
+
+load("subset_data.RData")
+
+## Fit model to adult and larvae microbiota
+
+sncm_adults <- neutral.fit(otu_table(ps.adults))
+mean.abu_adults <- colMeans(otu_table(ps.adults)[,colnames(otu_table(ps.adults)) %in% rownames(sncm_adults[[2]])])
+
+sncm_larvae <- neutral.fit(otu_table(ps.larvae))
+mean.abu_larvae <- colMeans(otu_table(ps.larvae)[,colnames(otu_table(ps.larvae)) %in% rownames(sncm_larvae[[2]])])
+
+# Adults
+#sncm_adults[[1]][,"gRsqr"]  #inspect fit
+# Larvae
+#sncm_larvae[[1]][,"gRsqr"]  #inspect fit
+
+sncm_adults[[2]]$partition <- NA
+sncm_adults[[2]][sncm_adults[[2]]$freq >= sncm_adults[[2]]$Lower & sncm_adults[[2]]$freq <= sncm_adults[[2]]$Upper,]$partition <- "Neutral"
+sncm_adults[[2]][sncm_adults[[2]]$freq > sncm_adults[[2]]$Lower & sncm_adults[[2]]$freq > sncm_adults[[2]]$Upper,]$partition <- "Above"
+sncm_adults[[2]][sncm_adults[[2]]$freq < sncm_adults[[2]]$Lower & sncm_adults[[2]]$freq < sncm_adults[[2]]$Upper,]$partition <- "Below"
+sncm_adults[[2]]$color <- NA
+sncm_adults[[2]][sncm_adults[[2]]$partition %in% "Neutral",]$color <- "#bababa"
+sncm_adults[[2]][sncm_adults[[2]]$partition %in% "Above",]$color <- "#a6dba0"
+sncm_adults[[2]][sncm_adults[[2]]$partition %in% "Below",]$color <- "#c2a5cf"
+sncm_adults[[2]]$OTU <- rownames(sncm_adults[[2]])
+
+sncm_larvae[[2]]$partition <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$freq >= sncm_larvae[[2]]$Lower & sncm_larvae[[2]]$freq <= sncm_larvae[[2]]$Upper,]$partition <- "Neutral"
+sncm_larvae[[2]][sncm_larvae[[2]]$freq > sncm_larvae[[2]]$Lower & sncm_larvae[[2]]$freq > sncm_larvae[[2]]$Upper,]$partition <- "Above"
+sncm_larvae[[2]][sncm_larvae[[2]]$freq < sncm_larvae[[2]]$Lower & sncm_larvae[[2]]$freq < sncm_larvae[[2]]$Upper,]$partition <- "Below"
+sncm_larvae[[2]]$color <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$partition %in% "Neutral",]$color <- "#bababa"
+sncm_larvae[[2]][sncm_larvae[[2]]$partition %in% "Above",]$color <- "#a6dba0"
+sncm_larvae[[2]][sncm_larvae[[2]]$partition %in% "Below",]$color <- "#c2a5cf"
+sncm_larvae[[2]]$OTU <- rownames(sncm_larvae[[2]])
+
+# table(sncm_adults[[2]]$partition)
+# (table(sncm_adults[[2]]$partition)["Above"]/sum(table(sncm_adults[[2]]$partition)))*100
+# (table(sncm_adults[[2]]$partition)["Neutral"]/sum(table(sncm_adults[[2]]$partition)))*100
+# (table(sncm_adults[[2]]$partition)["Below"]/sum(table(sncm_adults[[2]]$partition)))*100
+
+# table(sncm_larvae[[2]]$partition)
+# (table(sncm_larvae[[2]]$partition)["Above"]/sum(table(sncm_larvae[[2]]$partition)))*100
+# (table(sncm_larvae[[2]]$partition)["Neutral"]/sum(table(sncm_larvae[[2]]$partition)))*100
+# (table(sncm_larvae[[2]]$partition)["Below"]/sum(table(sncm_larvae[[2]]$partition)))*100
+
+## Figure 2
+
+plot(y=sncm_adults[[2]]$freq,x=log(mean.abu_adults),ylim=c(0,1),col=sncm_adults[[2]]$color, pch=19, main="Adults", ylab="Occurrence frequency", xlab="log(Mean relative abundance)")
+points(y=sncm_adults[[2]]$freq.pred[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l")
+points(y=sncm_adults[[2]]$Lower[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+points(y=sncm_adults[[2]]$Upper[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+
+plot(y=sncm_larvae[[2]]$freq, x=log(mean.abu_larvae), ylim=c(0,1), col=sncm_larvae[[2]]$color, pch=19, main="Larvae", ylab="Occurrence frequency", xlab="log(Mean relative abundance)")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+
+
+## Figure 3 AB
+
+## VT taxa above the neutral expectation in Adults that are also VT taxa in Larvae 
+
+sncm_adults[[2]]$group <- NA
+sncm_adults[[2]]$color.group <- NA
+sncm_adults[[2]]$alpha.group <- NA
+sncm_adults[[2]][sncm_adults[[2]]$OTU %in% vt_strict,]$group <- "VT"
+
+sncm_adults[[2]][sncm_adults[[2]]$group %in% "VT",]$color.group <- "gray"
+sncm_adults[[2]][sncm_adults[[2]]$group %in% "VT" & sncm_adults[[2]]$partition %in% "Above",]$color.group <- "chocolate2"
+sncm_adults[[2]][sncm_adults[[2]]$color.group %in% "gray",]$alpha.group <- 0.4
+sncm_adults[[2]][!sncm_adults[[2]]$color.group %in% "gray",]$alpha.group <- 1
+ 
+sncm_larvae[[2]]$group <- NA
+sncm_larvae[[2]]$color.group <- NA
+sncm_larvae[[2]]$alpha.group <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% vt_strict,]$group <- "VT"
+
+sncm_larvae[[2]]$inAdults <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$group %in% "VT",]$inAdults <- "gray"
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% sncm_adults[[2]][sncm_adults[[2]]$group %in% "VT" & sncm_adults[[2]]$partition %in% "Above",]$OTU,]$inAdults <- "chocolate2"
+sncm_larvae[[2]]$inAdults.alpha <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$inAdults %in% "gray",]$inAdults.alpha <- 0.4
+sncm_larvae[[2]][!sncm_larvae[[2]]$inAdults %in% "gray",]$inAdults.alpha <- 1
+# 
+plot(y=sncm_adults[[2]]$freq,x=log(mean.abu_adults),ylim=c(0,1),col=alpha(sncm_adults[[2]]$color.group,sncm_adults[[2]]$alpha.group), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Adults")
+points(y=sncm_adults[[2]]$freq.pred[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l")
+points(y=sncm_adults[[2]]$Lower[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+points(y=sncm_adults[[2]]$Upper[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+
+plot(y=sncm_larvae[[2]]$freq,x=log(mean.abu_larvae),ylim=c(0,0.5),col=alpha(sncm_larvae[[2]]$inAdults,sncm_larvae[[2]]$inAdults.alpha), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Larvae")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+
+## Sponge-specific clusters
+
+taxa_adults <- data.frame(as(tax_table(ps.adults),"matrix"), stringsAsFactors=F)
+taxa_adults$OTU <- rownames(taxa_adults)
+sncm_adults[[2]] <- dplyr::inner_join(sncm_adults[[2]], taxa_adults)
+sncm_adults[[2]]$SEC <- NA
+sncm_adults[[2]][!sncm_adults[[2]]$major.SC %in% "unassigned",]$SEC <- "SEC"
+sncm_adults[[2]][sncm_adults[[2]]$major.SC %in% "unassigned",]$SEC <- "unassigned"
+
+sncm_adults[[2]]$color.sc <- NA
+sncm_adults[[2]]$alpha.sc <- NA
+sncm_adults[[2]][sncm_adults[[2]]$major.SC %in% "unassigned",]$color.sc <- "gray"
+sncm_adults[[2]][!sncm_adults[[2]]$major.SC %in% "unassigned",]$color.sc <- "plum3"
+sncm_adults[[2]][sncm_adults[[2]]$color.sc %in% "gray",]$alpha.sc <- 0.5
+sncm_adults[[2]][!sncm_adults[[2]]$color.sc %in% "gray",]$alpha.sc <- 1
+
+taxa_larvae <- data.frame(as(tax_table(ps.larvae),"matrix"), stringsAsFactors=F)
+taxa_larvae$OTU <- rownames(taxa_larvae)
+sncm_larvae[[2]] <- dplyr::inner_join(sncm_larvae[[2]], taxa_larvae)
+sncm_larvae[[2]]$SEC <- NA
+sncm_larvae[[2]][!sncm_larvae[[2]]$major.SC %in% "unassigned",]$SEC <- "SEC"
+sncm_larvae[[2]][sncm_larvae[[2]]$major.SC %in% "unassigned",]$SEC <- "unassigned"
+
+sncm_larvae[[2]]$color.sc <- NA
+sncm_larvae[[2]]$alpha.sc <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$major.SC %in% "unassigned",]$color.sc <- "gray"
+sncm_larvae[[2]][!sncm_larvae[[2]]$major.SC %in% "unassigned",]$color.sc <- "plum3"
+sncm_larvae[[2]][sncm_larvae[[2]]$color.sc %in% "gray",]$alpha.sc <- 0.5
+sncm_larvae[[2]][!sncm_larvae[[2]]$color.sc %in% "gray",]$alpha.sc <- 1
+
+## Subset of VT taxa that assign to sponge-specific clusters
+
+## Figure 3CD
+
+sncm_adults[[2]]$group <- NA
+sncm_adults[[2]]$color.group <- NA
+sncm_adults[[2]]$alpha.group <- NA
+sncm_adults[[2]][sncm_adults[[2]]$OTU %in% vt_strict,]$group <- "VT"
+sncm_adults[[2]][sncm_adults[[2]]$group %in% "VT",]$color.group <- "gray"
+sncm_adults[[2]][sncm_adults[[2]]$group %in% "VT" & sncm_adults[[2]]$SEC %in% "SEC" & sncm_adults[[2]]$partition %in% "Above",]$color.group <- "plum4"
+sncm_adults[[2]][sncm_adults[[2]]$color.group %in% "gray",]$alpha.group <- 0.4
+sncm_adults[[2]][!sncm_adults[[2]]$color.group %in% "gray",]$alpha.group <- 1
+
+
+sncm_larvae[[2]]$group <- NA
+sncm_larvae[[2]]$color.group <- NA
+sncm_larvae[[2]]$alpha.group <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% vt_strict,]$group <- "VT"
+sncm_larvae[[2]][sncm_larvae[[2]]$group %in% "VT",]$inAdults <- "gray"
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% sncm_adults[[2]][sncm_adults[[2]]$group %in% "VT" & sncm_adults[[2]]$SEC %in% "SEC" & sncm_adults[[2]]$partition %in% "Above",]$OTU,]$inAdults <- "plum4"
+sncm_larvae[[2]][sncm_larvae[[2]]$inAdults %in% "gray",]$inAdults.alpha <- 0.4
+sncm_larvae[[2]][!sncm_larvae[[2]]$inAdults %in% "gray",]$inAdults.alpha <- 1
+
+plot(y=sncm_adults[[2]]$freq,x=log(mean.abu_adults),ylim=c(0,1),col=alpha(sncm_adults[[2]]$color.group,sncm_adults[[2]]$alpha.group), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Adults")
+points(y=sncm_adults[[2]]$freq.pred[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l")
+points(y=sncm_adults[[2]]$Lower[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+points(y=sncm_adults[[2]]$Upper[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+
+plot(y=sncm_larvae[[2]]$freq,x=log(mean.abu_larvae),ylim=c(0,0.5),col=alpha(sncm_larvae[[2]]$inAdults,sncm_larvae[[2]]$inAdults.alpha), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Larvae")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+
+
+## Figure S2
+
+sncm_larvae[[2]]$group <- NA
+sncm_larvae[[2]]$color.group <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% colnames(otu_table(ps.larvae)),]$group <- "Overall"
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% setdiff(colnames(otu_table(ps.larvae)),colnames(seqtab_water)),]$group <- "Sponge_specific"
+sncm_larvae[[2]][sncm_larvae[[2]]$group %in% "Overall",]$color.group <- "gray"
+
+plot(y=sncm_larvae[[2]]$freq,x=log(mean.abu_larvae),ylim=c(0,1),col=alpha(sncm_larvae[[2]]$color.group,sncm_larvae[[2]]$alpha.group), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Larvae")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+
+sncm_larvae[[2]]$group <- NA
+sncm_larvae[[2]]$color.group <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% setdiff(colnames(otu_table(ps.larvae)),colnames(seqtab_water)),]$group <- "Sponge_specific"
+sncm_larvae[[2]][sncm_larvae[[2]]$group %in% "Sponge_specific",]$color.group <- "burlywood2"
+
+plot(y=sncm_larvae[[2]]$freq,x=log(mean.abu_larvae),ylim=c(0,0.5),col=alpha(sncm_larvae[[2]]$color.group,sncm_larvae[[2]]$alpha.group), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Larvae")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+
+
+## Figure S3
+
+sncm_adults[[2]]$group <- NA
+sncm_adults[[2]]$color.group <- NA
+sncm_adults[[2]]$alpha.group <- NA
+sncm_adults[[2]][sncm_adults[[2]]$OTU %in% colnames(otu_table(ps.adults)),]$group <- "Overall"
+sncm_adults[[2]][sncm_adults[[2]]$group %in% "Overall",]$color.group <- "gray"
+sncm_adults[[2]][sncm_adults[[2]]$group %in% "Overall" & sncm_adults[[2]]$partition %in% "Above",]$color.group <- "steelblue2"
+sncm_adults[[2]][sncm_adults[[2]]$color.group %in% "gray",]$alpha.group <- 0.5
+sncm_adults[[2]][!sncm_adults[[2]]$color.group %in% "gray",]$alpha.group <- 1
+
+sncm_larvae[[2]]$group <- NA
+sncm_larvae[[2]]$color.group <- NA
+sncm_larvae[[2]]$alpha.group <- NA
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% colnames(otu_table(ps.larvae)),]$group <- "Overall"
+sncm_larvae[[2]][sncm_larvae[[2]]$group %in% "Overall",]$color.group <- "gray"
+sncm_larvae[[2]][sncm_larvae[[2]]$OTU %in% sncm_adults[[2]][sncm_adults[[2]]$group %in% "Overall" & sncm_adults[[2]]$partition %in% "Above",]$OTU,]$color.group <- "steelblue2"
+sncm_larvae[[2]][sncm_larvae[[2]]$color.group %in% "gray",]$alpha.group <- 0.4
+sncm_larvae[[2]][!sncm_larvae[[2]]$color.group %in% "gray",]$alpha.group <- 1
+
+plot(y=sncm_adults[[2]]$freq,x=log(mean.abu_adults),ylim=c(0,1),col=alpha(sncm_adults[[2]]$color.group,sncm_adults[[2]]$alpha.group), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Adults")
+points(y=sncm_adults[[2]]$freq.pred[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l")
+points(y=sncm_adults[[2]]$Lower[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+points(y=sncm_adults[[2]]$Upper[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+
+plot(y=sncm_larvae[[2]]$freq,x=log(mean.abu_larvae),ylim=c(0,1),col=alpha(sncm_larvae[[2]]$color.group,sncm_larvae[[2]]$alpha.group), pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Larvae")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+
+# Figure S4
+
+plot(y=sncm_adults[[2]]$freq,x=log(mean.abu_adults),ylim=c(0,1),col=alpha(sncm_adults[[2]]$color.sc,sncm_adults[[2]]$alpha.sc),pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Adults")
+points(y=sncm_adults[[2]]$freq.pred[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l")
+points(y=sncm_adults[[2]]$Lower[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+points(y=sncm_adults[[2]]$Upper[order(log(mean.abu_adults))],x=log(mean.abu_adults)[order(log(mean.abu_adults))],type="l",lty=2)
+
+plot(y=sncm_larvae[[2]]$freq,x=log(mean.abu_larvae),ylim=c(0,1),col=alpha(sncm_larvae[[2]]$color.sc,sncm_larvae[[2]]$alpha.sc),pch=19, ylab="Occurrence frequency", xlab="log(Mean relative abundance)", main="Larvae")
+points(y=sncm_larvae[[2]]$freq.pred[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l")
+points(y=sncm_larvae[[2]]$Lower[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+points(y=sncm_larvae[[2]]$Upper[order(log(mean.abu_larvae))],x=log(mean.abu_larvae)[order(log(mean.abu_larvae))],type="l",lty=2)
+```
+

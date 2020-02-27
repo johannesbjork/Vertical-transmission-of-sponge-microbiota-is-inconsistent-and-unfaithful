@@ -1,0 +1,900 @@
+---
+title: "Vertical transmission of sponge microbiota is inconsistent and unfaithful"
+author: "Johannes Björk"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Figure 4 and Figure S8
+
+```{r pressure, warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE, fig.height=8}
+
+library(phyloseq)
+library(reshape2)
+library(ggplot2)
+
+load("subset_data.RData")
+colz <- readRDS("cols.RDS")
+
+########## Bar Plots #################
+
+# This function takes a phyloseq object, agglomerates OTUs to the desired taxonomic rank, 
+# prunes out OTUs below a certain relative proportion in a sample (ie 1% ) 
+# and melts the phyloseq object into long format which is suitable for ggplot stacked barplots.
+taxglom_and_melt <- function(physeq, taxrank, prune){
+  
+  # Agglomerate all otu's by given taxonomic level
+  pglom <- tax_glom(physeq, taxrank = taxrank)
+  
+  # Create a new phyloseq object which removes taxa from each sample below the prune parameter
+  pglom_prune <- transform_sample_counts(pglom,function(x) {x/sum(x)})
+  otu_table(pglom_prune)[otu_table(pglom_prune) < prune] <- 0
+  pglom_prune <- prune_taxa(taxa_sums(pglom_prune) > 0, pglom_prune)
+  
+  # Melt into long format and sort by taxonomy
+  physeq_long <- psmelt(pglom_prune)
+  physeq_long <- physeq_long[order(physeq_long[ ,taxrank]), ]
+  
+  # Return long data frame
+  return(physeq_long)
+}
+
+## Aae
+
+# Parent
+aae.12.1b_parent_overall <- prune_samples(samples="ERR1780516", ps.Aae)
+aae.12.1b_parent_overall <- prune_taxa(taxa_sums(aae.12.1b_parent_overall)>0,aae.12.1b_parent_overall)
+aae.12.1b_parent_overall <- taxglom_and_melt(aae.12.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+aae.12.1b_overall <- taxglom_and_melt(ps.Aae.12.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+aae.12.3a_parent_overall <- prune_samples(samples="ERR1780518", ps.Aae)
+aae.12.3a_parent_overall <- prune_taxa(taxa_sums(aae.12.3a_parent_overall)>0,aae.12.3a_parent_overall)
+aae.12.3a_parent_overall <- taxglom_and_melt(aae.12.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+aae.12.3a_overall <- taxglom_and_melt(ps.Aae.12.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+aae.12.5a_parent_overall <- prune_samples(samples="ERR1780520", ps.Aae)
+aae.12.5a_parent_overall <- prune_taxa(taxa_sums(aae.12.5a_parent_overall)>0,aae.12.5a_parent_overall)
+aae.12.5a_parent_overall <- taxglom_and_melt(aae.12.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+aae.12.5a_overall <- taxglom_and_melt(ps.Aae.12.5a_overall, taxrank = "Phylum", prune = 0)
+
+aae.taxa_overall <- rbind(aae.12.1b_parent_overall,aae.12.1b_overall,
+                          aae.12.3a_parent_overall,aae.12.3a_overall,
+                          aae.12.5a_parent_overall,aae.12.5a_overall)
+
+aae.taxa_overall$Phylum <- factor(aae.taxa_overall$Phylum, levels=unique(sort(as.character(aae.taxa_overall$Phylum))))
+
+aae.taxa_overall$source <- aae.taxa_overall$sourceHost
+aae.taxa_overall[is.na(aae.taxa_overall$source),]$source <- as.character(aae.taxa_overall[is.na(aae.taxa_overall$source),]$sampleID)
+aae.taxa_overall$sampleID <- as.character(aae.taxa_overall$sampleID)
+aae.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),]$source))){
+  aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),][aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),]$source %in% unique(aae.taxa_overall$source)[i],]$stripID <- plyr::revalue(aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),][aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),]$source %in% unique(aae.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),][aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),]$source %in% unique(aae.taxa_overall$source)[i],]$sampleID)))),unique(sort(aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),][aae.taxa_overall[grep(aae.taxa_overall$sampleID, pattern="L"),]$source %in% unique(aae.taxa_overall$source)[i],]$sampleID))))
+  aae.taxa_overall[aae.taxa_overall$sample_type %in% "larvae" & aae.taxa_overall$sourceHost %in% unique(aae.taxa_overall[aae.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- aae.taxa_overall[aae.taxa_overall$sample_type %in% "larvae" & aae.taxa_overall$sourceHost %in% unique(aae.taxa_overall[aae.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(aae.taxa_overall[aae.taxa_overall$sample_type %in% "larvae" & aae.taxa_overall$sourceHost %in% unique(aae.taxa_overall[aae.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+aae.taxa_overall[is.na(aae.taxa_overall$stripID),]$stripID <- plyr::revalue(aae.taxa_overall[is.na(aae.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(aae.taxa_overall[is.na(aae.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(aae.taxa_overall[is.na(aae.taxa_overall$stripID),]$source))))))
+
+aae.taxa_overall$network <- "(A) Overall vertical transmission"
+
+aae.taxa_overall$sampleID <- factor(aae.taxa_overall$sampleID, levels=unique(aae.taxa_overall$sampleID))
+
+## Parent
+aae.12.1b_parent_vt <- prune_samples(samples="ERR1780516", ps.Aae.noWa)
+aae.12.1b_parent_vt <- prune_taxa(taxa_sums(aae.12.1b_parent_vt)>0,aae.12.1b_parent_vt)
+aae.12.1b_parent_vt <- taxglom_and_melt(aae.12.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+aae.12.1b_vt <- taxglom_and_melt(ps.Aae.12.1b_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+aae.12.3a_parent_vt <- prune_samples(samples="ERR1780518", ps.Aae.noWa)
+aae.12.3a_parent_vt <- prune_taxa(taxa_sums(aae.12.3a_parent_vt)>0,aae.12.3a_parent_vt)
+aae.12.3a_parent_vt <- taxglom_and_melt(aae.12.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+aae.12.3a_vt <- taxglom_and_melt(ps.Aae.12.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+aae.12.5a_parent_vt <- prune_samples(samples="ERR1780520", ps.Aae.noWa)
+aae.12.5a_parent_vt <- prune_taxa(taxa_sums(aae.12.5a_parent_vt)>0,aae.12.5a_parent_vt)
+aae.12.5a_parent_vt <- taxglom_and_melt(aae.12.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+aae.12.5a_vt <- taxglom_and_melt(ps.Aae.12.5a_vt, taxrank = "Phylum", prune = 0)
+
+aae.taxa_vt <- rbind(aae.12.1b_parent_vt,aae.12.1b_vt,
+                     aae.12.3a_parent_vt,aae.12.3a_vt,
+                     aae.12.5a_parent_vt,aae.12.5a_vt)
+
+aae.taxa_vt$Phylum <- factor(aae.taxa_vt$Phylum, levels=unique(sort(as.character(aae.taxa_vt$Phylum))))
+
+aae.taxa_vt$source <- aae.taxa_vt$sourceHost
+aae.taxa_vt[is.na(aae.taxa_vt$source),]$source <- as.character(aae.taxa_vt[is.na(aae.taxa_vt$source),]$sampleID)
+aae.taxa_vt$sampleID <- as.character(aae.taxa_vt$sampleID)
+aae.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),]$source))){
+  aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),][aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),]$source %in% unique(aae.taxa_vt$source)[i],]$stripID <- plyr::revalue(aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),][aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),]$source %in% unique(aae.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),][aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),]$source %in% unique(aae.taxa_vt$source)[i],]$sampleID)))),unique(sort(aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),][aae.taxa_vt[grep(aae.taxa_vt$sampleID, pattern="L"),]$source %in% unique(aae.taxa_vt$source)[i],]$sampleID))))
+  aae.taxa_vt[aae.taxa_vt$sample_type %in% "larvae" & aae.taxa_vt$sourceHost %in% unique(aae.taxa_vt[aae.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- aae.taxa_vt[aae.taxa_vt$sample_type %in% "larvae" & aae.taxa_vt$sourceHost %in% unique(aae.taxa_vt[aae.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(aae.taxa_vt[aae.taxa_vt$sample_type %in% "larvae" & aae.taxa_vt$sourceHost %in% unique(aae.taxa_vt[aae.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+aae.taxa_vt[is.na(aae.taxa_vt$stripID),]$stripID <- plyr::revalue(aae.taxa_vt[is.na(aae.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(aae.taxa_vt[is.na(aae.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(aae.taxa_vt[is.na(aae.taxa_vt$stripID),]$source))))))
+
+aae.taxa_vt$sampleID <- factor(aae.taxa_vt$sampleID, levels=unique(aae.taxa_vt$sampleID))
+
+aae.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+aae_taxa <- rbind(aae.taxa_overall,aae.taxa_vt)
+
+p1 <- ggplot(aae_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Aae", y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(aae_taxa[!duplicated(aae_taxa$sampleID),]$stripID,unique(aae_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(strip.text.x=element_text(size = 12, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p1)
+
+## Ior
+
+## Parent
+ior.11.1b_parent_overall <- prune_samples(samples="ERR1780757", ps.Ior)
+ior.11.1b_parent_overall <- prune_taxa(taxa_sums(ior.11.1b_parent_overall)>0,ior.11.1b_parent_overall)
+ior.11.1b_parent_overall <- taxglom_and_melt(ior.11.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ior.11.1b_overall <- taxglom_and_melt(ps.Ior.11.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+ior.11.3a_parent_overall <- prune_samples(samples="ERR1780759", ps.Ior)
+ior.11.3a_parent_overall <- prune_taxa(taxa_sums(ior.11.3a_parent_overall)>0,ior.11.3a_parent_overall)
+ior.11.3a_parent_overall <- taxglom_and_melt(ior.11.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ior.11.3a_overall <- taxglom_and_melt(ps.Ior.11.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+ior.11.5a_parent_overall <- prune_samples(samples="ERR1780761", ps.Ior)
+ior.11.5a_parent_overall <- prune_taxa(taxa_sums(ior.11.5a_parent_overall)>0,ior.11.5a_parent_overall)
+ior.11.5a_parent_overall <- taxglom_and_melt(ior.11.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#ior.11.5a_overall <- taxglom_and_melt(ps.Ior.11.5a_overall, taxrank = "Phylum", prune = 0)
+
+ior.taxa_overall <- rbind(ior.11.1b_parent_overall,ior.11.1b_overall,
+                          ior.11.3a_parent_overall,ior.11.3a_overall,
+                          ior.11.5a_parent_overall)
+
+
+ior.taxa_overall$Phylum <- factor(ior.taxa_overall$Phylum, levels=unique(sort(as.character(ior.taxa_overall$Phylum))))
+
+ior.taxa_overall$source <- ior.taxa_overall$sourceHost
+ior.taxa_overall[is.na(ior.taxa_overall$source),]$source <- as.character(ior.taxa_overall[is.na(ior.taxa_overall$source),]$sampleID)
+ior.taxa_overall$sampleID <- as.character(ior.taxa_overall$sampleID)
+ior.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),]$source))){
+  ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),][ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ior.taxa_overall$source)[i],]$stripID <- plyr::revalue(ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),][ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ior.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),][ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ior.taxa_overall$source)[i],]$sampleID)))),unique(sort(ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),][ior.taxa_overall[grep(ior.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ior.taxa_overall$source)[i],]$sampleID))))
+  ior.taxa_overall[ior.taxa_overall$sample_type %in% "larvae" & ior.taxa_overall$sourceHost %in% unique(ior.taxa_overall[ior.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- ior.taxa_overall[ior.taxa_overall$sample_type %in% "larvae" & ior.taxa_overall$sourceHost %in% unique(ior.taxa_overall[ior.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(ior.taxa_overall[ior.taxa_overall$sample_type %in% "larvae" & ior.taxa_overall$sourceHost %in% unique(ior.taxa_overall[ior.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+ior.taxa_overall[is.na(ior.taxa_overall$stripID),]$stripID <- plyr::revalue(ior.taxa_overall[is.na(ior.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(ior.taxa_overall[is.na(ior.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(ior.taxa_overall[is.na(ior.taxa_overall$stripID),]$source))))))
+
+ior.taxa_overall$network <- "(A) Overall vertical transmission"
+
+ior.taxa_overall$sampleID <- factor(ior.taxa_overall$sampleID, levels=unique(ior.taxa_overall$sampleID))
+
+## Parent
+ior.11.1b_parent_vt <- prune_samples(samples="ERR1780757", ps.Ior.noWa)
+ior.11.1b_parent_vt <- prune_taxa(taxa_sums(ior.11.1b_parent_vt)>0,ior.11.1b_parent_vt)
+ior.11.1b_parent_vt <- taxglom_and_melt(ior.11.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ior.11.1b_vt <- taxglom_and_melt(ps.Ior.11.1b_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+ior.11.3a_parent_vt <- prune_samples(samples="ERR1780759", ps.Ior.noWa)
+ior.11.3a_parent_vt <- prune_taxa(taxa_sums(ior.11.3a_parent_vt)>0,ior.11.3a_parent_vt)
+ior.11.3a_parent_vt <- taxglom_and_melt(ior.11.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ior.11.3a_vt <- taxglom_and_melt(ps.Ior.11.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+ior.11.5a_parent_vt <- prune_samples(samples="ERR1780761", ps.Ior.noWa)
+ior.11.5a_parent_vt <- prune_taxa(taxa_sums(ior.11.5a_parent_vt)>0,ior.11.5a_parent_vt)
+ior.11.5a_parent_vt <- taxglom_and_melt(ior.11.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#ior.11.5a_vt <- taxglom_and_melt(ps.Ior.11.5a_vt, taxrank = "Phylum", prune = 0)
+
+ior.taxa_vt <- rbind(ior.11.1b_parent_vt,ior.11.1b_vt,
+                     ior.11.3a_parent_vt,ior.11.3a_vt,
+                     ior.11.5a_parent_vt)
+
+ior.taxa_vt$Phylum <- factor(ior.taxa_vt$Phylum, levels=unique(sort(as.character(ior.taxa_vt$Phylum))))
+
+ior.taxa_vt$source <- ior.taxa_vt$sourceHost
+ior.taxa_vt[is.na(ior.taxa_vt$source),]$source <- as.character(ior.taxa_vt[is.na(ior.taxa_vt$source),]$sampleID)
+ior.taxa_vt$sampleID <- as.character(ior.taxa_vt$sampleID)
+ior.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),]$source))){
+  ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),][ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ior.taxa_vt$source)[i],]$stripID <- plyr::revalue(ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),][ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ior.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),][ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ior.taxa_vt$source)[i],]$sampleID)))),unique(sort(ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),][ior.taxa_vt[grep(ior.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ior.taxa_vt$source)[i],]$sampleID))))
+  ior.taxa_vt[ior.taxa_vt$sample_type %in% "larvae" & ior.taxa_vt$sourceHost %in% unique(ior.taxa_vt[ior.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- ior.taxa_vt[ior.taxa_vt$sample_type %in% "larvae" & ior.taxa_vt$sourceHost %in% unique(ior.taxa_vt[ior.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(ior.taxa_vt[ior.taxa_vt$sample_type %in% "larvae" & ior.taxa_vt$sourceHost %in% unique(ior.taxa_vt[ior.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+ior.taxa_vt[is.na(ior.taxa_vt$stripID),]$stripID <- plyr::revalue(ior.taxa_vt[is.na(ior.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(ior.taxa_vt[is.na(ior.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(ior.taxa_vt[is.na(ior.taxa_vt$stripID),]$source))))))
+
+ior.taxa_vt$sampleID <- factor(ior.taxa_vt$sampleID, levels=unique(ior.taxa_vt$sampleID))
+
+ior.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+ior_taxa <- rbind(ior.taxa_overall,ior.taxa_vt)
+
+p2 <- ggplot(ior_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Ior", y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(ior_taxa[!duplicated(ior_taxa$sampleID),]$stripID,unique(ior_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(strip.text.x=element_text(size = 11, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p2)
+
+## Ifa
+
+## Parent
+ifa.15.1b_parent_overall <- prune_samples(samples="ERR1780751", ps.Ifa)
+ifa.15.1b_parent_overall <- prune_taxa(taxa_sums(ifa.15.1b_parent_overall)>0,ifa.15.1b_parent_overall)
+ifa.15.1b_parent_overall <- taxglom_and_melt(ifa.15.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ifa.15.1b_overall <- taxglom_and_melt(ps.Ifa.15.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+ifa.15.3a_parent_overall <- prune_samples(samples="ERR1780753", ps.Ifa)
+ifa.15.3a_parent_overall <- prune_taxa(taxa_sums(ifa.15.3a_parent_overall)>0,ifa.15.3a_parent_overall)
+ifa.15.3a_parent_overall <- taxglom_and_melt(ifa.15.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ifa.15.3a_overall <- taxglom_and_melt(ps.Ifa.15.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+ifa.15.5a_parent_overall <- prune_samples(samples="ERR1780755", ps.Ifa)
+ifa.15.5a_parent_overall <- prune_taxa(taxa_sums(ifa.15.5a_parent_overall)>0,ifa.15.5a_parent_overall)
+ifa.15.5a_parent_overall <- taxglom_and_melt(ifa.15.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#ifa.15.5a_overall <- taxglom_and_melt(ps.Ifa.15.5a_overall, taxrank = "Phylum", prune = 0)
+
+ifa.taxa_overall <- rbind(ifa.15.1b_parent_overall,ifa.15.1b_overall,
+                          ifa.15.3a_parent_overall,ifa.15.3a_overall,
+                          ifa.15.5a_parent_overall)
+
+
+ifa.taxa_overall$Phylum <- factor(ifa.taxa_overall$Phylum, levels=unique(sort(as.character(ifa.taxa_overall$Phylum))))
+
+ifa.taxa_overall$source <- ifa.taxa_overall$sourceHost
+ifa.taxa_overall[is.na(ifa.taxa_overall$source),]$source <- as.character(ifa.taxa_overall[is.na(ifa.taxa_overall$source),]$sampleID)
+ifa.taxa_overall$sampleID <- as.character(ifa.taxa_overall$sampleID)
+ifa.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),]$source))){
+  ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),][ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_overall$source)[i],]$stripID <- plyr::revalue(ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),][ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),][ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_overall$source)[i],]$sampleID)))),unique(sort(ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),][ifa.taxa_overall[grep(ifa.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_overall$source)[i],]$sampleID))))
+  ifa.taxa_overall[ifa.taxa_overall$sample_type %in% "larvae" & ifa.taxa_overall$sourceHost %in% unique(ifa.taxa_overall[ifa.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- ifa.taxa_overall[ifa.taxa_overall$sample_type %in% "larvae" & ifa.taxa_overall$sourceHost %in% unique(ifa.taxa_overall[ifa.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(ifa.taxa_overall[ifa.taxa_overall$sample_type %in% "larvae" & ifa.taxa_overall$sourceHost %in% unique(ifa.taxa_overall[ifa.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+ifa.taxa_overall[is.na(ifa.taxa_overall$stripID),]$stripID <- plyr::revalue(ifa.taxa_overall[is.na(ifa.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(ifa.taxa_overall[is.na(ifa.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(ifa.taxa_overall[is.na(ifa.taxa_overall$stripID),]$source))))))
+
+ifa.taxa_overall$network <- "(A) Overall vertical transmission"
+
+ifa.taxa_overall$sampleID <- factor(ifa.taxa_overall$sampleID, levels=unique(ifa.taxa_overall$sampleID))
+
+## Parent
+ifa.15.1b_parent_vt <- prune_samples(samples="ERR1780751", ps.Ifa.noWa)
+ifa.15.1b_parent_vt <- prune_taxa(taxa_sums(ifa.15.1b_parent_vt)>0,ifa.15.1b_parent_vt)
+ifa.15.1b_parent_vt <- taxglom_and_melt(ifa.15.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ifa.15.1b_vt <- taxglom_and_melt(ps.Ifa.15.1b_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+ifa.15.3a_parent_vt <- prune_samples(samples="ERR1780753", ps.Ifa.noWa)
+ifa.15.3a_parent_vt <- prune_taxa(taxa_sums(ifa.15.3a_parent_vt)>0,ifa.15.3a_parent_vt)
+ifa.15.3a_parent_vt <- taxglom_and_melt(ifa.15.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#ifa.15.3a_vt <- taxglom_and_melt(ps.Ifa.15.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+ifa.15.5a_parent_vt <- prune_samples(samples="ERR1780755", ps.Ifa.noWa)
+ifa.15.5a_parent_vt <- prune_taxa(taxa_sums(ifa.15.5a_parent_vt)>0,ifa.15.5a_parent_vt)
+ifa.15.5a_parent_vt <- taxglom_and_melt(ifa.15.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#ifa.15.5a_vt <- taxglom_and_melt(ps.Ifa.15.5a_vt, taxrank = "Phylum", prune = 0)
+
+ifa.taxa_vt <- rbind(ifa.15.1b_parent_vt,ifa.15.1b_vt,
+                     ifa.15.3a_parent_vt,
+                     ifa.15.5a_parent_vt)
+
+ifa.taxa_vt$Phylum <- factor(ifa.taxa_vt$Phylum, levels=unique(sort(as.character(ifa.taxa_vt$Phylum))))
+
+ifa.taxa_vt$source <- ifa.taxa_vt$sourceHost
+ifa.taxa_vt[is.na(ifa.taxa_vt$source),]$source <- as.character(ifa.taxa_vt[is.na(ifa.taxa_vt$source),]$sampleID)
+ifa.taxa_vt$sampleID <- as.character(ifa.taxa_vt$sampleID)
+ifa.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),]$source))){
+  ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),][ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_vt$source)[i],]$stripID <- plyr::revalue(ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),][ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),][ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_vt$source)[i],]$sampleID)))),unique(sort(ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),][ifa.taxa_vt[grep(ifa.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ifa.taxa_vt$source)[i],]$sampleID))))
+  ifa.taxa_vt[ifa.taxa_vt$sample_type %in% "larvae" & ifa.taxa_vt$sourceHost %in% unique(ifa.taxa_vt[ifa.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- ifa.taxa_vt[ifa.taxa_vt$sample_type %in% "larvae" & ifa.taxa_vt$sourceHost %in% unique(ifa.taxa_vt[ifa.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(ifa.taxa_vt[ifa.taxa_vt$sample_type %in% "larvae" & ifa.taxa_vt$sourceHost %in% unique(ifa.taxa_vt[ifa.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+ifa.taxa_vt[is.na(ifa.taxa_vt$stripID),]$stripID <- plyr::revalue(ifa.taxa_vt[is.na(ifa.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(ifa.taxa_vt[is.na(ifa.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(ifa.taxa_vt[is.na(ifa.taxa_vt$stripID),]$source))))))
+
+ifa.taxa_vt$sampleID <- factor(ifa.taxa_vt$sampleID, levels=unique(ifa.taxa_vt$sampleID))
+
+ifa.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+ifa_taxa <- rbind(ifa.taxa_overall,ifa.taxa_vt)
+
+p3 <- ggplot(ifa_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Ifa", y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(ifa_taxa[!duplicated(ifa_taxa$sampleID),]$stripID,unique(ifa_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(text = element_text(family = "HelveticaNeue"), strip.text.x=element_text(size = 11, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p3)
+
+
+## Ccr
+
+## Parent
+ccr.9.1b_parent_overall <- prune_samples(samples="ERR1780627", ps.Ccr)
+ccr.9.1b_parent_overall <- prune_taxa(taxa_sums(ccr.9.1b_parent_overall)>0,ccr.9.1b_parent_overall)
+ccr.9.1b_parent_overall <- taxglom_and_melt(ccr.9.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ccr.9.1b_overall <- taxglom_and_melt(ps.Ccr.9.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+ccr.9.3a_parent_overall <- prune_samples(samples="ERR1780629", ps.Ccr)
+ccr.9.3a_parent_overall <- prune_taxa(taxa_sums(ccr.9.3a_parent_overall)>0,ccr.9.3a_parent_overall)
+ccr.9.3a_parent_overall <- taxglom_and_melt(ccr.9.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ccr.9.3a_overall <- taxglom_and_melt(ps.Ccr.9.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+ccr.9.5a_parent_overall <- prune_samples(samples="ERR1780631", ps.Ccr)
+ccr.9.5a_parent_overall <- prune_taxa(taxa_sums(ccr.9.5a_parent_overall)>0,ccr.9.5a_parent_overall)
+ccr.9.5a_parent_overall <- taxglom_and_melt(ccr.9.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ccr.9.5a_overall <- taxglom_and_melt(ps.Ccr.9.5a_overall, taxrank = "Phylum", prune = 0)
+
+ccr.taxa_overall <- rbind(ccr.9.1b_parent_overall,ccr.9.1b_overall,
+                          ccr.9.3a_parent_overall,ccr.9.3a_overall,
+                          ccr.9.5a_parent_overall,ccr.9.5a_overall)
+
+ccr.taxa_overall$Phylum <- factor(ccr.taxa_overall$Phylum, levels=unique(sort(as.character(ccr.taxa_overall$Phylum))))
+
+ccr.taxa_overall$source <- ccr.taxa_overall$sourceHost
+ccr.taxa_overall[is.na(ccr.taxa_overall$source),]$source <- as.character(ccr.taxa_overall[is.na(ccr.taxa_overall$source),]$sampleID)
+ccr.taxa_overall$sampleID <- as.character(ccr.taxa_overall$sampleID)
+ccr.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),]$source))){
+  ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),][ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_overall$source)[i],]$stripID <- plyr::revalue(ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),][ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),][ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_overall$source)[i],]$sampleID)))),unique(sort(ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),][ccr.taxa_overall[grep(ccr.taxa_overall$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_overall$source)[i],]$sampleID))))
+  ccr.taxa_overall[ccr.taxa_overall$sample_type %in% "larvae" & ccr.taxa_overall$sourceHost %in% unique(ccr.taxa_overall[ccr.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- ccr.taxa_overall[ccr.taxa_overall$sample_type %in% "larvae" & ccr.taxa_overall$sourceHost %in% unique(ccr.taxa_overall[ccr.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(ccr.taxa_overall[ccr.taxa_overall$sample_type %in% "larvae" & ccr.taxa_overall$sourceHost %in% unique(ccr.taxa_overall[ccr.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+ccr.taxa_overall[is.na(ccr.taxa_overall$stripID),]$stripID <- plyr::revalue(ccr.taxa_overall[is.na(ccr.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(ccr.taxa_overall[is.na(ccr.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(ccr.taxa_overall[is.na(ccr.taxa_overall$stripID),]$source))))))
+
+ccr.taxa_overall$network <- "(A) Overall vertical transmission"
+
+ccr.taxa_overall$sampleID <- factor(ccr.taxa_overall$sampleID, levels=unique(ccr.taxa_overall$sampleID))
+
+## Parent
+ccr.9.1b_parent_vt <- prune_samples(samples="ERR1780627", ps.Ccr.noWa)
+ccr.9.1b_parent_vt <- prune_taxa(taxa_sums(ccr.9.1b_parent_vt)>0,ccr.9.1b_parent_vt)
+ccr.9.1b_parent_vt <- taxglom_and_melt(ccr.9.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ccr.9.1b_vt <- taxglom_and_melt(ps.Ccr.9.1b_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+ccr.9.3a_parent_vt <- prune_samples(samples="ERR1780629", ps.Ccr.noWa)
+ccr.9.3a_parent_vt <- prune_taxa(taxa_sums(ccr.9.3a_parent_vt)>0,ccr.9.3a_parent_vt)
+ccr.9.3a_parent_vt <- taxglom_and_melt(ccr.9.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ccr.9.3a_vt <- taxglom_and_melt(ps.Ccr.9.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+ccr.9.5a_parent_vt <- prune_samples(samples="ERR1780631", ps.Ccr.noWa)
+ccr.9.5a_parent_vt <- prune_taxa(taxa_sums(ccr.9.5a_parent_vt)>0,ccr.9.5a_parent_vt)
+ccr.9.5a_parent_vt <- taxglom_and_melt(ccr.9.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+ccr.9.5a_vt <- taxglom_and_melt(ps.Ccr.9.5a_vt, taxrank = "Phylum", prune = 0)
+
+ccr.taxa_vt <- rbind(ccr.9.1b_parent_vt,ccr.9.1b_vt,
+                     ccr.9.3a_parent_vt,ccr.9.3a_vt,
+                     ccr.9.5a_parent_vt,ccr.9.5a_vt)
+
+ccr.taxa_vt$Phylum <- factor(ccr.taxa_vt$Phylum, levels=unique(sort(as.character(ccr.taxa_vt$Phylum))))
+
+ccr.taxa_vt$source <- ccr.taxa_vt$sourceHost
+ccr.taxa_vt[is.na(ccr.taxa_vt$source),]$source <- as.character(ccr.taxa_vt[is.na(ccr.taxa_vt$source),]$sampleID)
+ccr.taxa_vt$sampleID <- as.character(ccr.taxa_vt$sampleID)
+ccr.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),]$source))){
+  ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),][ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_vt$source)[i],]$stripID <- plyr::revalue(ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),][ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),][ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_vt$source)[i],]$sampleID)))),unique(sort(ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),][ccr.taxa_vt[grep(ccr.taxa_vt$sampleID, pattern="L"),]$source %in% unique(ccr.taxa_vt$source)[i],]$sampleID))))
+  ccr.taxa_vt[ccr.taxa_vt$sample_type %in% "larvae" & ccr.taxa_vt$sourceHost %in% unique(ccr.taxa_vt[ccr.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- ccr.taxa_vt[ccr.taxa_vt$sample_type %in% "larvae" & ccr.taxa_vt$sourceHost %in% unique(ccr.taxa_vt[ccr.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(ccr.taxa_vt[ccr.taxa_vt$sample_type %in% "larvae" & ccr.taxa_vt$sourceHost %in% unique(ccr.taxa_vt[ccr.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+ccr.taxa_vt[is.na(ccr.taxa_vt$stripID),]$stripID <- plyr::revalue(ccr.taxa_vt[is.na(ccr.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(ccr.taxa_vt[is.na(ccr.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(ccr.taxa_vt[is.na(ccr.taxa_vt$stripID),]$source))))))
+
+ccr.taxa_vt$sampleID <- factor(ccr.taxa_vt$sampleID, levels=unique(ccr.taxa_vt$sampleID))
+
+ccr.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+ccr_taxa <- rbind(ccr.taxa_overall,ccr.taxa_vt)
+
+p4 <- ggplot(ccr_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Ccr", y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(ccr_taxa[!duplicated(ccr_taxa$sampleID),]$stripID,unique(ccr_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(text = element_text(family = "HelveticaNeue"), strip.text.x=element_text(size = 12, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p4)
+
+
+## Cvi
+
+## Parent
+cvi.10.1b_parent_overall <- prune_samples(samples="ERR1780686", ps.Cvi)
+cvi.10.1b_parent_overall <- prune_taxa(taxa_sums(cvi.10.1b_parent_overall)>0,cvi.10.1b_parent_overall)
+cvi.10.1b_parent_overall <- taxglom_and_melt(cvi.10.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+cvi.10.1b_overall <- taxglom_and_melt(ps.Cvi.10.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+cvi.10.3a_parent_overall <- prune_samples(samples="ERR1780688", ps.Cvi)
+cvi.10.3a_parent_overall <- prune_taxa(taxa_sums(cvi.10.3a_parent_overall)>0,cvi.10.3a_parent_overall)
+cvi.10.3a_parent_overall <- taxglom_and_melt(cvi.10.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+cvi.10.3a_overall <- taxglom_and_melt(ps.Cvi.10.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+cvi.10.5a_parent_overall <- prune_samples(samples="ERR1780690", ps.Cvi)
+cvi.10.5a_parent_overall <- prune_taxa(taxa_sums(cvi.10.5a_parent_overall)>0,cvi.10.5a_parent_overall)
+cvi.10.5a_parent_overall <- taxglom_and_melt(cvi.10.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+cvi.10.5a_overall <- taxglom_and_melt(ps.Cvi.10.5a_overall, taxrank = "Phylum", prune = 0)
+
+cvi.taxa_overall <- rbind(cvi.10.1b_parent_overall,cvi.10.1b_overall,
+                          cvi.10.3a_parent_overall,cvi.10.3a_overall,
+                          cvi.10.5a_parent_overall,cvi.10.5a_overall)
+
+
+cvi.taxa_overall$Phylum <- factor(cvi.taxa_overall$Phylum, levels=unique(sort(as.character(cvi.taxa_overall$Phylum))))
+
+cvi.taxa_overall$source <- cvi.taxa_overall$sourceHost
+cvi.taxa_overall[is.na(cvi.taxa_overall$source),]$source <- as.character(cvi.taxa_overall[is.na(cvi.taxa_overall$source),]$sampleID)
+cvi.taxa_overall$sampleID <- as.character(cvi.taxa_overall$sampleID)
+cvi.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),]$source))){
+  cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),][cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_overall$source)[i],]$stripID <- plyr::revalue(cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),][cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),][cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_overall$source)[i],]$sampleID)))),unique(sort(cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),][cvi.taxa_overall[grep(cvi.taxa_overall$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_overall$source)[i],]$sampleID))))
+  cvi.taxa_overall[cvi.taxa_overall$sample_type %in% "larvae" & cvi.taxa_overall$sourceHost %in% unique(cvi.taxa_overall[cvi.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- cvi.taxa_overall[cvi.taxa_overall$sample_type %in% "larvae" & cvi.taxa_overall$sourceHost %in% unique(cvi.taxa_overall[cvi.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(cvi.taxa_overall[cvi.taxa_overall$sample_type %in% "larvae" & cvi.taxa_overall$sourceHost %in% unique(cvi.taxa_overall[cvi.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+cvi.taxa_overall[is.na(cvi.taxa_overall$stripID),]$stripID <- plyr::revalue(cvi.taxa_overall[is.na(cvi.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(cvi.taxa_overall[is.na(cvi.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(cvi.taxa_overall[is.na(cvi.taxa_overall$stripID),]$source))))))
+
+cvi.taxa_overall$network <- "(A) Overall vertical transmission"
+
+cvi.taxa_overall$sampleID <- factor(cvi.taxa_overall$sampleID, levels=unique(cvi.taxa_overall$sampleID))
+
+## Parent
+cvi.10.1b_parent_vt <- prune_samples(samples="ERR1780686", ps.Cvi.noWa)
+cvi.10.1b_parent_vt <- prune_taxa(taxa_sums(cvi.10.1b_parent_vt)>0,cvi.10.1b_parent_vt)
+cvi.10.1b_parent_vt <- taxglom_and_melt(cvi.10.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+cvi.10.1b_vt <- taxglom_and_melt(ps.Cvi.10.1b_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+cvi.10.3a_parent_vt <- prune_samples(samples="ERR1780688", ps.Cvi.noWa)
+cvi.10.3a_parent_vt <- prune_taxa(taxa_sums(cvi.10.3a_parent_vt)>0,cvi.10.3a_parent_vt)
+cvi.10.3a_parent_vt <- taxglom_and_melt(cvi.10.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+cvi.10.3a_vt <- taxglom_and_melt(ps.Cvi.10.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+cvi.10.5a_parent_vt <- prune_samples(samples="ERR1780690", ps.Cvi.noWa)
+cvi.10.5a_parent_vt <- prune_taxa(taxa_sums(cvi.10.5a_parent_vt)>0,cvi.10.5a_parent_vt)
+cvi.10.5a_parent_vt <- taxglom_and_melt(cvi.10.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+cvi.10.5a_vt <- taxglom_and_melt(ps.Cvi.10.5a_vt, taxrank = "Phylum", prune = 0)
+
+cvi.taxa_vt <- rbind(cvi.10.1b_parent_vt,cvi.10.1b_vt,
+                     cvi.10.3a_parent_vt,cvi.10.3a_vt,
+                     cvi.10.5a_parent_vt,cvi.10.5a_vt)
+
+cvi.taxa_vt$Phylum <- factor(cvi.taxa_vt$Phylum, levels=unique(sort(as.character(cvi.taxa_vt$Phylum))))
+
+cvi.taxa_vt$source <- cvi.taxa_vt$sourceHost
+cvi.taxa_vt[is.na(cvi.taxa_vt$source),]$source <- as.character(cvi.taxa_vt[is.na(cvi.taxa_vt$source),]$sampleID)
+cvi.taxa_vt$sampleID <- as.character(cvi.taxa_vt$sampleID)
+cvi.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),]$source))){
+  cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),][cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_vt$source)[i],]$stripID <- plyr::revalue(cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),][cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),][cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_vt$source)[i],]$sampleID)))),unique(sort(cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),][cvi.taxa_vt[grep(cvi.taxa_vt$sampleID, pattern="L"),]$source %in% unique(cvi.taxa_vt$source)[i],]$sampleID))))
+  cvi.taxa_vt[cvi.taxa_vt$sample_type %in% "larvae" & cvi.taxa_vt$sourceHost %in% unique(cvi.taxa_vt[cvi.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- cvi.taxa_vt[cvi.taxa_vt$sample_type %in% "larvae" & cvi.taxa_vt$sourceHost %in% unique(cvi.taxa_vt[cvi.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(cvi.taxa_vt[cvi.taxa_vt$sample_type %in% "larvae" & cvi.taxa_vt$sourceHost %in% unique(cvi.taxa_vt[cvi.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+cvi.taxa_vt[is.na(cvi.taxa_vt$stripID),]$stripID <- plyr::revalue(cvi.taxa_vt[is.na(cvi.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(cvi.taxa_vt[is.na(cvi.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(cvi.taxa_vt[is.na(cvi.taxa_vt$stripID),]$source))))))
+
+cvi.taxa_vt$sampleID <- factor(cvi.taxa_vt$sampleID, levels=unique(cvi.taxa_vt$sampleID))
+
+cvi.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+cvi_taxa <- rbind(cvi.taxa_overall,cvi.taxa_vt)
+
+p5 <- ggplot(cvi_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Cvi",y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(cvi_taxa[!duplicated(cvi_taxa$sampleID),]$stripID,unique(cvi_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(text = element_text(family = "HelveticaNeue"), strip.text.x=element_text(size = 12, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p5)
+
+
+## Dav
+
+## Parent
+dav.13.1b_parent_overall <- prune_samples(samples="ERR1780692", ps.Dav)
+dav.13.1b_parent_overall <- prune_taxa(taxa_sums(dav.13.1b_parent_overall)>0,dav.13.1b_parent_overall)
+dav.13.1b_parent_overall <- taxglom_and_melt(dav.13.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+dav.13.1b_overall <- taxglom_and_melt(ps.Dav.13.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+dav.13.3a_parent_overall <- prune_samples(samples="ERR1780694", ps.Dav)
+dav.13.3a_parent_overall <- prune_taxa(taxa_sums(dav.13.3a_parent_overall)>0,dav.13.3a_parent_overall)
+dav.13.3a_parent_overall <- taxglom_and_melt(dav.13.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+dav.13.3a_overall <- taxglom_and_melt(ps.Dav.13.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+dav.13.5a_parent_overall <- prune_samples(samples="ERR1780696", ps.Dav)
+dav.13.5a_parent_overall <- prune_taxa(taxa_sums(dav.13.5a_parent_overall)>0,dav.13.5a_parent_overall)
+dav.13.5a_parent_overall <- taxglom_and_melt(dav.13.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+dav.13.5a_overall <- taxglom_and_melt(ps.Dav.13.5a_overall, taxrank = "Phylum", prune = 0)
+
+dav.taxa_overall <- rbind(dav.13.1b_parent_overall,dav.13.1b_overall,
+                          dav.13.3a_parent_overall,dav.13.3a_overall,
+                          dav.13.5a_parent_overall,dav.13.5a_overall)
+
+
+dav.taxa_overall$Phylum <- factor(dav.taxa_overall$Phylum, levels=unique(sort(as.character(dav.taxa_overall$Phylum))))
+
+dav.taxa_overall$source <- dav.taxa_overall$sourceHost
+dav.taxa_overall[is.na(dav.taxa_overall$source),]$source <- as.character(dav.taxa_overall[is.na(dav.taxa_overall$source),]$sampleID)
+dav.taxa_overall$sampleID <- as.character(dav.taxa_overall$sampleID)
+dav.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),]$source))){
+  dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),][dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),]$source %in% unique(dav.taxa_overall$source)[i],]$stripID <- plyr::revalue(dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),][dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),]$source %in% unique(dav.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),][dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),]$source %in% unique(dav.taxa_overall$source)[i],]$sampleID)))),unique(sort(dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),][dav.taxa_overall[grep(dav.taxa_overall$sampleID, pattern="L"),]$source %in% unique(dav.taxa_overall$source)[i],]$sampleID))))
+  dav.taxa_overall[dav.taxa_overall$sample_type %in% "larvae" & dav.taxa_overall$sourceHost %in% unique(dav.taxa_overall[dav.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- dav.taxa_overall[dav.taxa_overall$sample_type %in% "larvae" & dav.taxa_overall$sourceHost %in% unique(dav.taxa_overall[dav.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(dav.taxa_overall[dav.taxa_overall$sample_type %in% "larvae" & dav.taxa_overall$sourceHost %in% unique(dav.taxa_overall[dav.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+dav.taxa_overall[is.na(dav.taxa_overall$stripID),]$stripID <- plyr::revalue(dav.taxa_overall[is.na(dav.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(dav.taxa_overall[is.na(dav.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(dav.taxa_overall[is.na(dav.taxa_overall$stripID),]$source))))))
+
+dav.taxa_overall$network <- "(A) Overall vertical transmission"
+
+dav.taxa_overall$sampleID <- factor(dav.taxa_overall$sampleID, levels=unique(dav.taxa_overall$sampleID))
+
+## Parent
+dav.13.1b_parent_vt <- prune_samples(samples="ERR1780692", ps.Dav.noWa)
+dav.13.1b_parent_vt <- prune_taxa(taxa_sums(dav.13.1b_parent_vt)>0,dav.13.1b_parent_vt)
+dav.13.1b_parent_vt <- taxglom_and_melt(dav.13.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+dav.13.1b_vt <- taxglom_and_melt(ps.Dav.13.1b_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+dav.13.3a_parent_vt <- prune_samples(samples="ERR1780694", ps.Dav.noWa)
+dav.13.3a_parent_vt <- prune_taxa(taxa_sums(dav.13.3a_parent_vt)>0,dav.13.3a_parent_vt)
+dav.13.3a_parent_vt <- taxglom_and_melt(dav.13.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+dav.13.3a_vt <- taxglom_and_melt(ps.Dav.13.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+dav.13.5a_parent_vt <- prune_samples(samples="ERR1780696", ps.Dav.noWa)
+dav.13.5a_parent_vt <- prune_taxa(taxa_sums(dav.13.5a_parent_vt)>0,dav.13.5a_parent_vt)
+dav.13.5a_parent_vt <- taxglom_and_melt(dav.13.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+dav.13.5a_vt <- taxglom_and_melt(ps.Dav.13.5a_vt, taxrank = "Phylum", prune = 0)
+
+dav.taxa_vt <- rbind(dav.13.1b_parent_vt,dav.13.1b_vt,
+                     dav.13.3a_parent_vt,dav.13.3a_vt,
+                     dav.13.5a_parent_vt,dav.13.5a_vt)
+
+dav.taxa_vt$Phylum <- factor(dav.taxa_vt$Phylum, levels=unique(sort(as.character(dav.taxa_vt$Phylum))))
+
+dav.taxa_vt$source <- dav.taxa_vt$sourceHost
+dav.taxa_vt[is.na(dav.taxa_vt$source),]$source <- as.character(dav.taxa_vt[is.na(dav.taxa_vt$source),]$sampleID)
+dav.taxa_vt$sampleID <- as.character(dav.taxa_vt$sampleID)
+dav.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),]$source))){
+  dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),][dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),]$source %in% unique(dav.taxa_vt$source)[i],]$stripID <- plyr::revalue(dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),][dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),]$source %in% unique(dav.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),][dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),]$source %in% unique(dav.taxa_vt$source)[i],]$sampleID)))),unique(sort(dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),][dav.taxa_vt[grep(dav.taxa_vt$sampleID, pattern="L"),]$source %in% unique(dav.taxa_vt$source)[i],]$sampleID))))
+  dav.taxa_vt[dav.taxa_vt$sample_type %in% "larvae" & dav.taxa_vt$sourceHost %in% unique(dav.taxa_vt[dav.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- dav.taxa_vt[dav.taxa_vt$sample_type %in% "larvae" & dav.taxa_vt$sourceHost %in% unique(dav.taxa_vt[dav.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(dav.taxa_vt[dav.taxa_vt$sample_type %in% "larvae" & dav.taxa_vt$sourceHost %in% unique(dav.taxa_vt[dav.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+dav.taxa_vt[is.na(dav.taxa_vt$stripID),]$stripID <- plyr::revalue(dav.taxa_vt[is.na(dav.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(dav.taxa_vt[is.na(dav.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(dav.taxa_vt[is.na(dav.taxa_vt$stripID),]$source))))))
+
+dav.taxa_vt$sampleID <- factor(dav.taxa_vt$sampleID, levels=unique(dav.taxa_vt$sampleID))
+
+dav.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+dav_taxa <- rbind(dav.taxa_overall,dav.taxa_vt)
+
+p6 <- ggplot(dav_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Dav", y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(dav_taxa[!duplicated(dav_taxa$sampleID),]$stripID,unique(dav_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(text = element_text(family = "HelveticaNeue"), strip.text.x=element_text(size = 12, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p6)
+
+## Hco
+
+## Parent
+hco.16.1b_parent_overall <- prune_samples(samples="ERR1780719", ps.Hco)
+hco.16.1b_parent_overall <- prune_taxa(taxa_sums(hco.16.1b_parent_overall)>0,hco.16.1b_parent_overall)
+hco.16.1b_parent_overall <- taxglom_and_melt(hco.16.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+hco.16.1b_overall <- taxglom_and_melt(ps.Hco.16.1b.Q_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+hco.16.3a_parent_overall <- prune_samples(samples="ERR1780721", ps.Hco)
+hco.16.3a_parent_overall <- prune_taxa(taxa_sums(hco.16.3a_parent_overall)>0,hco.16.3a_parent_overall)
+hco.16.3a_parent_overall <- taxglom_and_melt(hco.16.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#hco.16.3a_overall <- taxglom_and_melt(ps.Hco.16.3a.Q_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+hco.16.5a_parent_overall <- prune_samples(samples="ERR1780723", ps.Hco)
+hco.16.5a_parent_overall <- prune_taxa(taxa_sums(hco.16.5a_parent_overall)>0,hco.16.5a_parent_overall)
+hco.16.5a_parent_overall <- taxglom_and_melt(hco.16.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+hco.16.5a_overall <- taxglom_and_melt(ps.Hco.16.5a.Q_overall, taxrank = "Phylum", prune = 0)
+
+hco.taxa_overall <- rbind(hco.16.1b_parent_overall,hco.16.1b_overall,
+                          hco.16.3a_parent_overall,
+                          hco.16.5a_parent_overall,hco.16.5a_overall)
+
+hco.taxa_overall$Phylum <- factor(hco.taxa_overall$Phylum, levels=unique(sort(as.character(hco.taxa_overall$Phylum))))
+
+hco.taxa_overall$source <- hco.taxa_overall$sourceHost
+hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="Hco.16.3a.Q"),]$source <- "Hco.16.3a.Q"
+hco.taxa_overall[is.na(hco.taxa_overall$source),]$source <- as.character(hco.taxa_overall[is.na(hco.taxa_overall$source),]$sampleID)
+hco.taxa_overall$sampleID <- as.character(hco.taxa_overall$sampleID)
+hco.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source))){
+  hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),][hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source %in% unique(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source)[i],]$stripID <- plyr::revalue(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),][hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source %in% unique(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),][hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source %in% unique(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source)[i],]$sampleID)))),unique(sort(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),][hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source %in% unique(hco.taxa_overall[grep(hco.taxa_overall$sampleID, pattern="L"),]$source)[i],]$sampleID))))
+  hco.taxa_overall[hco.taxa_overall$sample_type %in% "larvae" & hco.taxa_overall$source %in% unique(hco.taxa_overall[hco.taxa_overall$sample_type %in% "larvae",]$source)[i],] <- hco.taxa_overall[hco.taxa_overall$sample_type %in% "larvae" & hco.taxa_overall$source %in% unique(hco.taxa_overall[hco.taxa_overall$sample_type %in% "larvae",]$source)[i],][order(hco.taxa_overall[hco.taxa_overall$sample_type %in% "larvae" & hco.taxa_overall$source %in% unique(hco.taxa_overall[hco.taxa_overall$sample_type %in% "larvae",]$source)[i],]$stripID),]
+}
+hco.taxa_overall[is.na(hco.taxa_overall$stripID),]$stripID <- plyr::revalue(hco.taxa_overall[is.na(hco.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(hco.taxa_overall[is.na(hco.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(hco.taxa_overall[is.na(hco.taxa_overall$stripID),]$source))))))
+
+hco.taxa_overall$network <- "(A) Overall vertical transmission"
+
+hco.taxa_overall$sampleID <- factor(hco.taxa_overall$sampleID, levels=unique(hco.taxa_overall$sampleID))
+
+## Parent
+hco.16.1b_parent_vt <- prune_samples(samples="ERR1780719", ps.Hco.noWa)
+hco.16.1b_parent_vt <- prune_taxa(taxa_sums(hco.16.1b_parent_vt)>0,hco.16.1b_parent_vt)
+hco.16.1b_parent_vt <- taxglom_and_melt(hco.16.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+hco.16.1b_vt <- taxglom_and_melt(ps.Hco.16.1b.Q_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+hco.16.3a_parent_vt <- prune_samples(samples="ERR1780721", ps.Hco.noWa)
+hco.16.3a_parent_vt <- prune_taxa(taxa_sums(hco.16.3a_parent_vt)>0,hco.16.3a_parent_vt)
+hco.16.3a_parent_vt <- taxglom_and_melt(hco.16.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#hco.16.3a_vt <- taxglom_and_melt(ps.Hco.16.3a.Q_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+hco.16.5a_parent_vt <- prune_samples(samples="ERR1780723", ps.Hco.noWa)
+hco.16.5a_parent_vt <- prune_taxa(taxa_sums(hco.16.5a_parent_vt)>0,hco.16.5a_parent_vt)
+hco.16.5a_parent_vt <- taxglom_and_melt(hco.16.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+#hco.16.5a_vt <- taxglom_and_melt(ps.Hco.16.5a.Q_vt, taxrank = "Phylum", prune = 0)
+
+hco.taxa_vt <- rbind(hco.16.1b_parent_vt,hco.16.1b_vt,
+                     hco.16.3a_parent_vt,
+                     hco.16.5a_parent_vt)
+
+hco.taxa_vt$Phylum <- factor(hco.taxa_vt$Phylum, levels=unique(sort(as.character(hco.taxa_vt$Phylum))))
+
+hco.taxa_vt$source <- hco.taxa_vt$sourceHost
+hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="Hco.16.3a.Q"),]$source <- "Hco.16.3a.Q"
+hco.taxa_vt[is.na(hco.taxa_vt$source),]$source <- as.character(hco.taxa_vt[is.na(hco.taxa_vt$source),]$sampleID)
+hco.taxa_vt$sampleID <- as.character(hco.taxa_vt$sampleID)
+hco.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source))){
+  hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),][hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source %in% unique(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source)[i],]$stripID <- plyr::revalue(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),][hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source %in% unique(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),][hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source %in% unique(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source)[i],]$sampleID)))),unique(sort(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),][hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source %in% unique(hco.taxa_vt[grep(hco.taxa_vt$sampleID, pattern="L"),]$source)[i],]$sampleID))))
+  hco.taxa_vt[hco.taxa_vt$sample_type %in% "larvae" & hco.taxa_vt$source %in% unique(hco.taxa_vt[hco.taxa_vt$sample_type %in% "larvae",]$source)[i],] <- hco.taxa_vt[hco.taxa_vt$sample_type %in% "larvae" & hco.taxa_vt$source %in% unique(hco.taxa_vt[hco.taxa_vt$sample_type %in% "larvae",]$source)[i],][order(hco.taxa_vt[hco.taxa_vt$sample_type %in% "larvae" & hco.taxa_vt$source %in% unique(hco.taxa_vt[hco.taxa_vt$sample_type %in% "larvae",]$source)[i],]$stripID),]
+}
+hco.taxa_vt[is.na(hco.taxa_vt$stripID),]$stripID <- plyr::revalue(hco.taxa_vt[is.na(hco.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(hco.taxa_vt[is.na(hco.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(hco.taxa_vt[is.na(hco.taxa_vt$stripID),]$source))))))
+
+hco.taxa_vt$sampleID <- factor(hco.taxa_vt$sampleID, levels=unique(hco.taxa_vt$sampleID))
+
+hco.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+hco_taxa <- rbind(hco.taxa_overall,hco.taxa_vt)
+
+p7 <- ggplot(hco_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(title="Hco", y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(hco_taxa[!duplicated(hco_taxa$sampleID),]$stripID,unique(hco_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(text = element_text(family = "HelveticaNeue"), strip.text.x=element_text(size = 12, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p7)
+
+## Olo
+
+## Parent
+olo.14.1b_parent_overall <- prune_samples(samples="ERR1780781", ps.Olo)
+olo.14.1b_parent_overall <- prune_taxa(taxa_sums(olo.14.1b_parent_overall)>0,olo.14.1b_parent_overall)
+olo.14.1b_parent_overall <- taxglom_and_melt(olo.14.1b_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+olo.14.1b_overall <- taxglom_and_melt(ps.Olo.14.1b_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+olo.14.3a_parent_overall <- prune_samples(samples="ERR1780783", ps.Olo)
+olo.14.3a_parent_overall <- prune_taxa(taxa_sums(olo.14.3a_parent_overall)>0,olo.14.3a_parent_overall)
+olo.14.3a_parent_overall <- taxglom_and_melt(olo.14.3a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+olo.14.3a_overall <- taxglom_and_melt(ps.Olo.14.3a_overall, taxrank = "Phylum", prune = 0)
+
+## Parent
+olo.14.5a_parent_overall <- prune_samples(samples="ERR1780785", ps.Olo)
+olo.14.5a_parent_overall <- prune_taxa(taxa_sums(olo.14.5a_parent_overall)>0,olo.14.5a_parent_overall)
+olo.14.5a_parent_overall <- taxglom_and_melt(olo.14.5a_parent_overall, taxrank = "Phylum", prune = 0)
+
+## Offspring
+olo.14.5a_overall <- taxglom_and_melt(ps.Olo.14.5a_overall, taxrank = "Phylum", prune = 0)
+
+olo.taxa_overall <- rbind(olo.14.1b_parent_overall,olo.14.1b_overall,
+                          olo.14.3a_parent_overall,olo.14.3a_overall,
+                          olo.14.5a_parent_overall,olo.14.5a_overall)
+
+
+olo.taxa_overall$Phylum <- factor(olo.taxa_overall$Phylum, levels=unique(sort(as.character(olo.taxa_overall$Phylum))))
+
+olo.taxa_overall$source <- olo.taxa_overall$sourceHost
+olo.taxa_overall[is.na(olo.taxa_overall$source),]$source <- as.character(olo.taxa_overall[is.na(olo.taxa_overall$source),]$sampleID)
+olo.taxa_overall$sampleID <- as.character(olo.taxa_overall$sampleID)
+olo.taxa_overall$stripID <- NA
+
+for(i in 1:length(unique(olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),]$source))){
+  olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),][olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),]$source %in% unique(olo.taxa_overall$source)[i],]$stripID <- plyr::revalue(olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),][olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),]$source %in% unique(olo.taxa_overall$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),][olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),]$source %in% unique(olo.taxa_overall$source)[i],]$sampleID)))),unique(sort(olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),][olo.taxa_overall[grep(olo.taxa_overall$sampleID, pattern="L"),]$source %in% unique(olo.taxa_overall$source)[i],]$sampleID))))
+  olo.taxa_overall[olo.taxa_overall$sample_type %in% "larvae" & olo.taxa_overall$sourceHost %in% unique(olo.taxa_overall[olo.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],] <- olo.taxa_overall[olo.taxa_overall$sample_type %in% "larvae" & olo.taxa_overall$sourceHost %in% unique(olo.taxa_overall[olo.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],][order(olo.taxa_overall[olo.taxa_overall$sample_type %in% "larvae" & olo.taxa_overall$sourceHost %in% unique(olo.taxa_overall[olo.taxa_overall$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+olo.taxa_overall[is.na(olo.taxa_overall$stripID),]$stripID <- plyr::revalue(olo.taxa_overall[is.na(olo.taxa_overall$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(olo.taxa_overall[is.na(olo.taxa_overall$stripID),]$source)))),unique(sort(unique(sort(olo.taxa_overall[is.na(olo.taxa_overall$stripID),]$source))))))
+
+olo.taxa_overall$network <- "(A) Overall vertical transmission"
+
+olo.taxa_overall$sampleID <- factor(olo.taxa_overall$sampleID, levels=unique(olo.taxa_overall$sampleID))
+
+## Parent
+olo.14.1b_parent_vt <- prune_samples(samples="ERR1780781", ps.Olo.noWa)
+olo.14.1b_parent_vt <- prune_taxa(taxa_sums(olo.14.1b_parent_vt)>0,olo.14.1b_parent_vt)
+olo.14.1b_parent_vt <- taxglom_and_melt(olo.14.1b_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+olo.14.1b_vt <- taxglom_and_melt(ps.Olo.14.1b_vt, taxrank = "Phylum", prune = 0)
+
+#olo.14.1b_vt_parent_offspring <- rbind(olo.14.1b_parent_vt,olo.14.1b_vt)
+
+## Parent
+olo.14.3a_parent_vt <- prune_samples(samples="ERR1780783", ps.Olo.noWa)
+olo.14.3a_parent_vt <- prune_taxa(taxa_sums(olo.14.3a_parent_vt)>0,olo.14.3a_parent_vt)
+olo.14.3a_parent_vt <- taxglom_and_melt(olo.14.3a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+olo.14.3a_vt <- taxglom_and_melt(ps.Olo.14.3a_vt, taxrank = "Phylum", prune = 0)
+
+## Parent
+olo.14.5a_parent_vt <- prune_samples(samples="ERR1780785", ps.Olo.noWa)
+olo.14.5a_parent_vt <- prune_taxa(taxa_sums(olo.14.5a_parent_vt)>0,olo.14.5a_parent_vt)
+olo.14.5a_parent_vt <- taxglom_and_melt(olo.14.5a_parent_vt, taxrank = "Phylum", prune = 0)
+
+## Offspring
+olo.14.5a_vt <- taxglom_and_melt(ps.Olo.14.5a_vt, taxrank = "Phylum", prune = 0)
+
+olo.taxa_vt <- rbind(olo.14.1b_parent_vt,olo.14.1b_vt,
+                     olo.14.3a_parent_vt,olo.14.3a_vt,
+                     olo.14.5a_parent_vt,olo.14.5a_vt)
+
+olo.taxa_vt$Phylum <- factor(olo.taxa_vt$Phylum, levels=unique(sort(as.character(olo.taxa_vt$Phylum))))
+
+olo.taxa_vt$source <- olo.taxa_vt$sourceHost
+olo.taxa_vt[is.na(olo.taxa_vt$source),]$source <- as.character(olo.taxa_vt[is.na(olo.taxa_vt$source),]$sampleID)
+olo.taxa_vt$sampleID <- as.character(olo.taxa_vt$sampleID)
+olo.taxa_vt$stripID <- NA
+
+for(i in 1:length(unique(olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),]$source))){
+  olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),][olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),]$source %in% unique(olo.taxa_vt$source)[i],]$stripID <- plyr::revalue(olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),][olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),]$source %in% unique(olo.taxa_vt$source)[i],]$sampleID, setNames(paste0("Offspring ",1:length(unique(sort(olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),][olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),]$source %in% unique(olo.taxa_vt$source)[i],]$sampleID)))),unique(sort(olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),][olo.taxa_vt[grep(olo.taxa_vt$sampleID, pattern="L"),]$source %in% unique(olo.taxa_vt$source)[i],]$sampleID))))
+  olo.taxa_vt[olo.taxa_vt$sample_type %in% "larvae" & olo.taxa_vt$sourceHost %in% unique(olo.taxa_vt[olo.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],] <- olo.taxa_vt[olo.taxa_vt$sample_type %in% "larvae" & olo.taxa_vt$sourceHost %in% unique(olo.taxa_vt[olo.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],][order(olo.taxa_vt[olo.taxa_vt$sample_type %in% "larvae" & olo.taxa_vt$sourceHost %in% unique(olo.taxa_vt[olo.taxa_vt$sample_type %in% "larvae",]$sourceHost)[i],]$stripID),]
+}
+olo.taxa_vt[is.na(olo.taxa_vt$stripID),]$stripID <- plyr::revalue(olo.taxa_vt[is.na(olo.taxa_vt$stripID),]$source, setNames(paste0("Parent ",1:length(unique(sort(olo.taxa_vt[is.na(olo.taxa_vt$stripID),]$source)))),unique(sort(unique(sort(olo.taxa_vt[is.na(olo.taxa_vt$stripID),]$source))))))
+
+olo.taxa_vt$sampleID <- factor(olo.taxa_vt$sampleID, levels=unique(olo.taxa_vt$sampleID))
+
+olo.taxa_vt$network <- "(B) Sponge-specific vertical transmission"
+
+olo_taxa <- rbind(olo.taxa_overall,olo.taxa_vt)
+
+p8 <- ggplot(olo_taxa, aes(x=sampleID, y=Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  labs(y="Relative abundance") +
+  scale_fill_manual(values = colz) +
+  facet_wrap(.~network,ncol=1) +
+  guides(fill = guide_legend(reverse = FALSE, keywidth = 0.7, keyheight = 0.7,  ncol = 1)) +
+  scale_x_discrete(labels=setNames(olo_taxa[!duplicated(olo_taxa$sampleID),]$stripID,unique(olo_taxa$sampleID))) +
+  xlab("") + theme_bw() + theme(strip.text.x=element_text(size = 12, face = "italic"), strip.background = element_blank(), panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black", size=0.3), axis.ticks = element_line(colour = "black", size=0.2), axis.text.y = element_text(size=11), axis.title.y = element_text(size=13), axis.text.x = element_text(size=11, angle=90, hjust=1, vjust=0.5), legend.text=element_text(size=9))
+
+print(p8)
+
+```
